@@ -3,63 +3,17 @@
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <title>Гумові Руки - Магія для сина!</title>
+  <title>Гумовий Палець!</title>
   
   <script src="https://cdn.jsdelivr.net/npm/@mediapipe/camera_utils/camera_utils.js" crossorigin="anonymous"></script>
-  <script src="https://cdn.jsdelivr.net/npm/@mediapipe/control_utils/control_utils.js" crossorigin="anonymous"></script>
-  <script src="https://cdn.jsdelivr.net/npm/@mediapipe/drawing_utils/drawing_utils.js" crossorigin="anonymous"></script>
   <script src="https://cdn.jsdelivr.net/npm/@mediapipe/hands/hands.js" crossorigin="anonymous"></script>
   
   <style>
-    body {
-      margin: 0;
-      padding: 0;
-      overflow: hidden;
-      background-color: #111;
-      font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
-    }
-    
-    /* Розтягуємо канвас на весь екран і робимо дзеркальне відображення */
-    canvas {
-      display: block;
-      width: 100vw;
-      height: 100vh;
-      object-fit: cover;
-      transform: scaleX(-1);
-    }
-
-    #ui-layer {
-      position: absolute;
-      top: 0;
-      left: 0;
-      width: 100%;
-      height: 100%;
-      pointer-events: none; /* Щоб кліки проходили крізь текст */
-      display: flex;
-      flex-direction: column;
-      justify-content: center;
-      align-items: center;
-      z-index: 10;
-    }
-
-    #loading {
-      color: #fff;
-      font-size: 32px;
-      font-weight: bold;
-      text-shadow: 2px 2px 8px rgba(0,0,0,0.8);
-      background: rgba(0, 0, 0, 0.5);
-      padding: 20px 40px;
-      border-radius: 20px;
-    }
-
-    #instruction {
-      display: none;
-      color: #FFD700;
-      font-size: 28px;
-      font-weight: bold;
-      text-shadow: 2px 2px 4px rgba(0,0,0,1);
-      margin-top: -40vh;
-    }
+    body { margin: 0; overflow: hidden; background-color: #111; }
+    canvas { display: block; width: 100vw; height: 100vh; object-fit: cover; transform: scaleX(-1); }
+    #ui-layer { position: absolute; top: 0; left: 0; width: 100%; height: 100%; pointer-events: none; display: flex; flex-direction: column; justify-content: center; align-items: center; z-index: 10; font-family: sans-serif;}
+    #loading { color: #fff; font-size: 32px; font-weight: bold; background: rgba(0, 0, 0, 0.5); padding: 20px; border-radius: 20px; }
+    #instruction { display: none; color: #FFD700; font-size: 28px; font-weight: bold; text-shadow: 2px 2px 4px rgba(0,0,0,1); margin-top: -40vh; }
   </style>
 </head>
 <body>
@@ -68,7 +22,7 @@
   
   <div id="ui-layer">
     <div id="loading">Завантажуємо магію... ⏳</div>
-    <div id="instruction">Покажи два вказівних пальці! ☝️ ☝️</div>
+    <div id="instruction">Покажи обидві руки! Схопи лівий палець правим! 🤏</div>
   </div>
 
   <canvas id="canvasElement"></canvas>
@@ -80,81 +34,62 @@
     const loadingUI = document.getElementById('loading');
     const instructionUI = document.getElementById('instruction');
 
-    // Налаштовуємо MediaPipe Hands
     const hands = new Hands({locateFile: (file) => {
       return `https://cdn.jsdelivr.net/npm/@mediapipe/hands/${file}`;
     }});
 
     hands.setOptions({
-      maxNumHands: 2,           // Шукаємо до двох рук
-      modelComplexity: 1,       // Баланс між швидкістю та точністю
+      maxNumHands: 2,
+      modelComplexity: 1,
       minDetectionConfidence: 0.7,
       minTrackingConfidence: 0.7
     });
 
-    // Що робити, коли програма знайшла руки
     hands.onResults((results) => {
-      // Ховаємо екран завантаження, показуємо підказку
       loadingUI.style.display = 'none';
       instructionUI.style.display = 'block';
 
-      // Встановлюємо розмір канвасу під розмір відео
       canvasElement.width = results.image.width;
       canvasElement.height = results.image.height;
 
       canvasCtx.save();
-      // Спочатку малюємо саме відео
+      // Малюємо відео з камери
       canvasCtx.drawImage(results.image, 0, 0, canvasElement.width, canvasElement.height);
 
-      // Якщо знайдено рівно ДВІ руки
       if (results.multiHandLandmarks && results.multiHandLandmarks.length === 2) {
-        
-        // Ховаємо підказку, бо магія вже працює
         instructionUI.style.display = 'none';
 
-        const hand1 = results.multiHandLandmarks[0];
-        const hand2 = results.multiHandLandmarks[1];
+        // Визначаємо руки (може знадобитися поміняти їх місцями залежно від того, як камера бачить ліву/праву)
+        const hand1 = results.multiHandLandmarks[0]; // Умовно рука, яку тягнуть
+        const hand2 = results.multiHandLandmarks[1]; // Умовно рука, яка тягне
 
-        // Точка 8 - це кінчик вказівного пальця
-        const x1 = hand1[8].x * canvasElement.width;
-        const y1 = hand1[8].y * canvasElement.height;
-        const x2 = hand2[8].x * canvasElement.width;
-        const y2 = hand2[8].y * canvasElement.height;
+        // Точка 5 - це суглоб (кісточка) вказівного пальця біля долоні
+        const startX = hand1[5].x * canvasElement.width;
+        const startY = hand1[5].y * canvasElement.height;
+        
+        // Точка 8 - це кінчик вказівного пальця іншої руки (яка тягне)
+        const endX = hand2[8].x * canvasElement.width;
+        const endY = hand2[8].y * canvasElement.height;
 
-        // --- МАЛЮЄМО "ГУМОВИЙ ПАЛЕЦЬ" ---
-
-        // 1. Темний контур (імітація тіні/краю шкіри)
+        // Малюємо подовжений палець
         canvasCtx.beginPath();
-        canvasCtx.moveTo(x1, y1);
-        canvasCtx.lineTo(x2, y2);
-        canvasCtx.lineWidth = 55; // Товщина розтягнутого пальця
-        canvasCtx.strokeStyle = '#a66a44'; // Темніший колір
+        canvasCtx.moveTo(startX, startY);
+        canvasCtx.lineTo(endX, endY);
+        canvasCtx.lineWidth = 45; // Товщина пальця
+        canvasCtx.strokeStyle = '#fadcbd'; // Колір шкіри
         canvasCtx.lineCap = 'round';
         canvasCtx.stroke();
 
-        // 2. Основний колір шкіри
+        // Додаємо ніготь на кінці для реалістичності
         canvasCtx.beginPath();
-        canvasCtx.moveTo(x1, y1);
-        canvasCtx.lineTo(x2, y2);
-        canvasCtx.lineWidth = 45;
-        canvasCtx.strokeStyle = '#fadcbd'; // Світлий колір шкіри
-        canvasCtx.lineCap = 'round';
-        canvasCtx.stroke();
-
-        // 3. Відблиск (щоб здавалося об'ємним)
-        canvasCtx.beginPath();
-        canvasCtx.moveTo(x1, y1 - 10);
-        canvasCtx.lineTo(x2, y2 - 10);
-        canvasCtx.lineWidth = 8;
-        canvasCtx.strokeStyle = 'rgba(255, 255, 255, 0.4)'; 
-        canvasCtx.lineCap = 'round';
-        canvasCtx.stroke();
+        canvasCtx.arc(endX, endY, 15, 0, 2 * Math.PI);
+        canvasCtx.fillStyle = '#e8bca3'; // Трохи рожевіший колір нігтя
+        canvasCtx.fill();
       }
       
       canvasCtx.restore();
     });
 
-    // Запускаємо веб-камеру
     const camera = new Camera(videoElement, {
       onFrame: async () => {
         await hands.send({image: videoElement});

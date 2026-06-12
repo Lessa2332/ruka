@@ -2,102 +2,63 @@
 <html lang="uk">
 <head>
   <meta charset="UTF-8">
-  <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <title>Гумовий Палець!</title>
-  
+  <title>Магічні гумові пальці!</title>
   <script src="https://cdn.jsdelivr.net/npm/@mediapipe/camera_utils/camera_utils.js" crossorigin="anonymous"></script>
   <script src="https://cdn.jsdelivr.net/npm/@mediapipe/hands/hands.js" crossorigin="anonymous"></script>
-  
   <style>
-    body { margin: 0; overflow: hidden; background-color: #111; }
+    body { margin: 0; overflow: hidden; background: #000; }
     canvas { display: block; width: 100vw; height: 100vh; object-fit: cover; transform: scaleX(-1); }
-    #ui-layer { position: absolute; top: 0; left: 0; width: 100%; height: 100%; pointer-events: none; display: flex; flex-direction: column; justify-content: center; align-items: center; z-index: 10; font-family: sans-serif;}
-    #loading { color: #fff; font-size: 32px; font-weight: bold; background: rgba(0, 0, 0, 0.5); padding: 20px; border-radius: 20px; }
-    #instruction { display: none; color: #FFD700; font-size: 28px; font-weight: bold; text-shadow: 2px 2px 4px rgba(0,0,0,1); margin-top: -40vh; }
   </style>
 </head>
 <body>
-
   <video id="videoElement" style="display: none;" autoplay playsinline></video>
-  
-  <div id="ui-layer">
-    <div id="loading">Завантажуємо магію... ⏳</div>
-    <div id="instruction">Покажи обидві руки! Схопи лівий палець правим! 🤏</div>
-  </div>
-
   <canvas id="canvasElement"></canvas>
 
   <script>
     const videoElement = document.getElementById('videoElement');
     const canvasElement = document.getElementById('canvasElement');
-    const canvasCtx = canvasElement.getContext('2d');
-    const loadingUI = document.getElementById('loading');
-    const instructionUI = document.getElementById('instruction');
+    const ctx = canvasElement.getContext('2d');
 
-    const hands = new Hands({locateFile: (file) => {
-      return `https://cdn.jsdelivr.net/npm/@mediapipe/hands/${file}`;
-    }});
-
-    hands.setOptions({
-      maxNumHands: 2,
-      modelComplexity: 1,
-      minDetectionConfidence: 0.7,
-      minTrackingConfidence: 0.7
-    });
+    const hands = new Hands({locateFile: (file) => `https://cdn.jsdelivr.net/npm/@mediapipe/hands/${file}`});
+    hands.setOptions({ maxNumHands: 2, modelComplexity: 1, minDetectionConfidence: 0.7 });
 
     hands.onResults((results) => {
-      loadingUI.style.display = 'none';
-      instructionUI.style.display = 'block';
-
       canvasElement.width = results.image.width;
       canvasElement.height = results.image.height;
-
-      canvasCtx.save();
-      // Малюємо відео з камери
-      canvasCtx.drawImage(results.image, 0, 0, canvasElement.width, canvasElement.height);
+      ctx.drawImage(results.image, 0, 0, canvasElement.width, canvasElement.height);
 
       if (results.multiHandLandmarks && results.multiHandLandmarks.length === 2) {
-        instructionUI.style.display = 'none';
+        const hand1 = results.multiHandLandmarks[0];
+        const hand2 = results.multiHandLandmarks[1];
 
-        // Визначаємо руки (може знадобитися поміняти їх місцями залежно від того, як камера бачить ліву/праву)
-        const hand1 = results.multiHandLandmarks[0]; // Умовно рука, яку тягнуть
-        const hand2 = results.multiHandLandmarks[1]; // Умовно рука, яка тягне
-
-        // Точка 5 - це суглоб (кісточка) вказівного пальця біля долоні
-        const startX = hand1[5].x * canvasElement.width;
-        const startY = hand1[5].y * canvasElement.height;
+        // Кінчики пальців: 8(вказівний), 12(середній), 16(безіменний), 20(мізинець)
+        const tips = [8, 12, 16, 20];
         
-        // Точка 8 - це кінчик вказівного пальця іншої руки (яка тягне)
-        const endX = hand2[8].x * canvasElement.width;
-        const endY = hand2[8].y * canvasElement.height;
+        tips.forEach(tipIndex => {
+          const p1 = hand1[tipIndex];
+          const p2 = hand2[tipIndex];
+          
+          // Рахуємо відстань між кінчиками пальців обох рук
+          const dist = Math.hypot(p1.x - p2.x, p1.y - p2.y);
 
-        // Малюємо подовжений палець
-        canvasCtx.beginPath();
-        canvasCtx.moveTo(startX, startY);
-        canvasCtx.lineTo(endX, endY);
-        canvasCtx.lineWidth = 45; // Товщина пальця
-        canvasCtx.strokeStyle = '#fadcbd'; // Колір шкіри
-        canvasCtx.lineCap = 'round';
-        canvasCtx.stroke();
-
-        // Додаємо ніготь на кінці для реалістичності
-        canvasCtx.beginPath();
-        canvasCtx.arc(endX, endY, 15, 0, 2 * Math.PI);
-        canvasCtx.fillStyle = '#e8bca3'; // Трохи рожевіший колір нігтя
-        canvasCtx.fill();
+          // Якщо пальці близько (менше 0.1 - це "щипок")
+          if (dist < 0.15) {
+            ctx.beginPath();
+            ctx.moveTo(hand1[5].x * canvasElement.width, hand1[5].y * canvasElement.height);
+            ctx.lineTo(p2.x * canvasElement.width, p2.y * canvasElement.height);
+            ctx.lineWidth = 40;
+            ctx.strokeStyle = '#fadcbd'; 
+            ctx.lineCap = 'round';
+            ctx.stroke();
+          }
+        });
       }
-      
-      canvasCtx.restore();
     });
 
     const camera = new Camera(videoElement, {
-      onFrame: async () => {
-        await hands.send({image: videoElement});
-      },
-      width: 1280,
-      height: 720
+      onFrame: async () => { await hands.send({image: videoElement}); },
+      width: 1280, height: 720
     });
-    
     camera.start();
   </script>
 </body>

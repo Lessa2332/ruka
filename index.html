@@ -2,449 +2,168 @@
 <html lang="uk">
 <head>
   <meta charset="UTF-8">
-  <meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=no">
-  <title>Гумові пальці ● Gum-Gum Fruit Effect</title>
-  <!-- MediaPipe Hands + Camera utils -->
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Гумові Руки - Магія для сина!</title>
+  
   <script src="https://cdn.jsdelivr.net/npm/@mediapipe/camera_utils/camera_utils.js" crossorigin="anonymous"></script>
+  <script src="https://cdn.jsdelivr.net/npm/@mediapipe/control_utils/control_utils.js" crossorigin="anonymous"></script>
+  <script src="https://cdn.jsdelivr.net/npm/@mediapipe/drawing_utils/drawing_utils.js" crossorigin="anonymous"></script>
   <script src="https://cdn.jsdelivr.net/npm/@mediapipe/hands/hands.js" crossorigin="anonymous"></script>
+  
   <style>
-    * {
+    body {
       margin: 0;
       padding: 0;
-      box-sizing: border-box;
-      user-select: none;
-    }
-
-    body {
-      background: radial-gradient(circle at 20% 30%, #0a0f1e, #030507);
       overflow: hidden;
-      font-family: 'Segoe UI', 'Poppins', system-ui, -apple-system, 'Inter', sans-serif;
+      background-color: #111;
+      font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
     }
-
-    /* Дзеркальний canvas (як дзеркало) + ефект покриття */
+    
+    /* Розтягуємо канвас на весь екран і робимо дзеркальне відображення */
     canvas {
-      position: fixed;
-      top: 0;
-      left: 0;
+      display: block;
       width: 100vw;
       height: 100vh;
       object-fit: cover;
       transform: scaleX(-1);
-      display: block;
-      cursor: none;
-      z-index: 2;
     }
 
-    /* Інструкція + стильний UI */
-    .info-panel {
-      position: fixed;
-      bottom: 24px;
+    #ui-layer {
+      position: absolute;
+      top: 0;
       left: 0;
-      right: 0;
-      text-align: center;
+      width: 100%;
+      height: 100%;
+      pointer-events: none; /* Щоб кліки проходили крізь текст */
+      display: flex;
+      flex-direction: column;
+      justify-content: center;
+      align-items: center;
       z-index: 10;
-      pointer-events: none;
-      font-weight: 500;
-      text-shadow: 0 2px 8px rgba(0,0,0,0.6);
-      transition: all 0.3s ease;
     }
 
-    .badge {
-      display: inline-block;
-      background: rgba(0, 0, 0, 0.7);
-      backdrop-filter: blur(10px);
-      padding: 10px 20px;
-      border-radius: 60px;
-      color: #ffdfb3;
-      font-size: 0.9rem;
-      letter-spacing: 0.5px;
-      border: 1px solid rgba(255, 180, 70, 0.5);
-      box-shadow: 0 0 15px rgba(255, 100, 20, 0.3);
-      font-family: monospace;
-    }
-
-    .badge span {
-      color: #ffb347;
+    #loading {
+      color: #fff;
+      font-size: 32px;
       font-weight: bold;
-      font-size: 1.1rem;
+      text-shadow: 2px 2px 8px rgba(0,0,0,0.8);
+      background: rgba(0, 0, 0, 0.5);
+      padding: 20px 40px;
+      border-radius: 20px;
     }
 
-    .status-led {
-      display: inline-block;
-      width: 10px;
-      height: 10px;
-      border-radius: 10px;
-      background-color: #ff884d;
-      box-shadow: 0 0 6px #ffaa55;
-      margin-right: 8px;
-      animation: pulse 1.2s infinite;
-    }
-
-    @keyframes pulse {
-      0% { opacity: 0.5; transform: scale(1);}
-      100% { opacity: 1; transform: scale(1.2);}
-    }
-
-    /* водяний знак стильовий */
-    .watermark {
-      position: fixed;
-      bottom: 12px;
-      right: 16px;
-      color: rgba(255,220,150,0.5);
-      font-size: 11px;
-      z-index: 10;
-      font-family: monospace;
-      background: rgba(0,0,0,0.4);
-      padding: 4px 12px;
-      border-radius: 40px;
-      backdrop-filter: blur(4px);
-      pointer-events: none;
-    }
-
-    @media (max-width: 600px) {
-      .badge { font-size: 0.7rem; padding: 6px 14px; }
+    #instruction {
+      display: none;
+      color: #FFD700;
+      font-size: 28px;
+      font-weight: bold;
+      text-shadow: 2px 2px 4px rgba(0,0,0,1);
+      margin-top: -40vh;
     }
   </style>
 </head>
 <body>
-  <video id="videoElement" style="display: none;" autoplay playsinline muted></video>
+
+  <video id="videoElement" style="display: none;" autoplay playsinline></video>
+  
+  <div id="ui-layer">
+    <div id="loading">Завантажуємо магію... ⏳</div>
+    <div id="instruction">Покажи два вказівних пальці! ☝️ ☝️</div>
+  </div>
+
   <canvas id="canvasElement"></canvas>
 
-  <div class="info-panel">
-    <div class="badge">
-      <span class="status-led"></span>
-      ✨ ГУМОВІ ПАЛЬЦІ | GOMU GOMU NO ✨
-      <span style="margin:0 6px">⚡</span> покажи ДВІ руки
-    </div>
-  </div>
-  <div class="watermark">⚡ rubber finger connection · гумовий ефект</div>
-
   <script>
-    (function() {
-      // ----- DOM елементи -----
-      const videoElement = document.getElementById('videoElement');
-      const canvasElement = document.getElementById('canvasElement');
-      const ctx = canvasElement.getContext('2d');
+    const videoElement = document.getElementById('videoElement');
+    const canvasElement = document.getElementById('canvasElement');
+    const canvasCtx = canvasElement.getContext('2d');
+    const loadingUI = document.getElementById('loading');
+    const instructionUI = document.getElementById('instruction');
 
-      // ----- ініціалізація MediaPipe Hands -----
-      const hands = new Hands({
-        locateFile: (file) => `https://cdn.jsdelivr.net/npm/@mediapipe/hands/${file}`
-      });
+    // Налаштовуємо MediaPipe Hands
+    const hands = new Hands({locateFile: (file) => {
+      return `https://cdn.jsdelivr.net/npm/@mediapipe/hands/${file}`;
+    }});
 
-      // Оптимальні налаштування для швидкості + точності двох рук
-      hands.setOptions({
-        maxNumHands: 2,              // максимум 2 руки
-        modelComplexity: 1,          // баланс (0 - швидкий, 1 - точний)
-        minDetectionConfidence: 0.65,
-        minTrackingConfidence: 0.7
-      });
+    hands.setOptions({
+      maxNumHands: 2,           // Шукаємо до двох рук
+      modelComplexity: 1,       // Баланс між швидкістю та точністю
+      minDetectionConfidence: 0.7,
+      minTrackingConfidence: 0.7
+    });
 
-      // ----- важливі індекси для кінчиків пальців -----
-      // Згідно з MediaPipe Hands: 
-      // 4 -> великий палець (thumb tip)
-      // 8 -> вказівний (index finger tip)
-      // 12 -> середній (middle finger tip)
-      // 16 -> безіменний (ring finger tip)
-      // 20 -> мізинець (pinky tip)
-      const FINGER_TIPS = [4, 8, 12, 16, 20];
-      
-      // Додаткові назви для кращого розуміння (для дебагу, але не використовуються)
-      // Палітра кольорів "гумовий фрукт": теплий каучуковий колір + оранжевий відблиск
-      const RUBBER_BASE = '#e0934b';
-      const RUBBER_GLOW = '#f5bc70';
-      
-      // --- функція малювання "гумового" сполучення між відповідними пальцями двох рук ---
-      function drawRubberConnections(landmarksList, imageWidth, imageHeight) {
-        if (!landmarksList || landmarksList.length !== 2) return;  // потрібно рівно 2 руки
+    // Що робити, коли програма знайшла руки
+    hands.onResults((results) => {
+      // Ховаємо екран завантаження, показуємо підказку
+      loadingUI.style.display = 'none';
+      instructionUI.style.display = 'block';
+
+      // Встановлюємо розмір канвасу під розмір відео
+      canvasElement.width = results.image.width;
+      canvasElement.height = results.image.height;
+
+      canvasCtx.save();
+      // Спочатку малюємо саме відео
+      canvasCtx.drawImage(results.image, 0, 0, canvasElement.width, canvasElement.height);
+
+      // Якщо знайдено рівно ДВІ руки
+      if (results.multiHandLandmarks && results.multiHandLandmarks.length === 2) {
         
-        const handA = landmarksList[0];   // перша рука
-        const handB = landmarksList[1];   // друга рука
-        
-        // Проходимось по всіх п'яти парах кінчиків пальців
-        for (let i = 0; i < FINGER_TIPS.length; i++) {
-          const tipIdx = FINGER_TIPS[i];
-          
-          // Отримуємо координати для кожного кінчика пальця (нормалізовані 0..1)
-          const pointA = handA[tipIdx];
-          const pointB = handB[tipIdx];
-          
-          if (!pointA || !pointB) continue;
-          
-          // перетворення в пікселі canvas
-          const x1 = pointA.x * imageWidth;
-          const y1 = pointA.y * imageHeight;
-          const x2 = pointB.x * imageWidth;
-          const y2 = pointB.y * imageHeight;
-          
-          // Обчислюємо відстань в пікселях (для динамічної товщини лінії)
-          const distancePx = Math.hypot(x2 - x1, y2 - y1);
-          // Динамічна товщина: чим далі пальці, тим товстіша "гума" (ефект розтягнення)
-          // мінімум 8px, максимум 32px - пружний вигляд
-          let lineWidth = Math.min(36, Math.max(8, distancePx / 22 + 6));
-          // Додатково: легка нелінійність при дуже великих відстанях 
-          if (distancePx > 280) lineWidth = Math.min(42, lineWidth * 1.1);
-          
-          // Створюємо градієнтну лінію для об'ємного ефекту "гумового джгута"
-          const gradient = ctx.createLinearGradient(x1, y1, x2, y2);
-          gradient.addColorStop(0, RUBBER_BASE);
-          gradient.addColorStop(0.5, RUBBER_GLOW);
-          gradient.addColorStop(1, RUBBER_BASE);
-          
-          ctx.save();
-          ctx.shadowBlur = 12;
-          ctx.shadowColor = 'rgba(230, 120, 40, 0.7)';
-          ctx.beginPath();
-          ctx.moveTo(x1, y1);
-          ctx.lineTo(x2, y2);
-          ctx.lineWidth = lineWidth;
-          ctx.lineCap = 'round';
-          ctx.strokeStyle = gradient;
-          ctx.stroke();
-          
-          // Додатковий внутрішній блиск (друга лінія тонша, світліша) - для ефекту "гума мерехтить"
-          ctx.beginPath();
-          ctx.moveTo(x1, y1);
-          ctx.lineTo(x2, y2);
-          ctx.lineWidth = lineWidth * 0.32;
-          ctx.strokeStyle = '#ffe3b0';
-          ctx.shadowBlur = 8;
-          ctx.stroke();
-          
-          // Малюємо яскраві "суглоби" на кінчиках пальців – маленькі кульки, як гумові наконечники
-          ctx.shadowBlur = 10;
-          ctx.shadowColor = '#ffae5a';
-          ctx.beginPath();
-          ctx.arc(x1, y1, lineWidth * 0.5, 0, Math.PI * 2);
-          ctx.fillStyle = '#ffc285';
-          ctx.fill();
-          ctx.beginPath();
-          ctx.arc(x2, y2, lineWidth * 0.5, 0, Math.PI * 2);
-          ctx.fill();
-          
-          // другий шар – іскристий центр
-          ctx.shadowBlur = 6;
-          ctx.beginPath();
-          ctx.arc(x1, y1, lineWidth * 0.25, 0, Math.PI * 2);
-          ctx.fillStyle = '#fff1c1';
-          ctx.fill();
-          ctx.beginPath();
-          ctx.arc(x2, y2, lineWidth * 0.25, 0, Math.PI * 2);
-          ctx.fill();
-          ctx.restore();
-        }
-        
-        // Додаткова фантазія: малюємо також легкі перехресні лінії між великим пальцем однієї руки 
-        // і вказівним другої? Але це буде зайвим, залишаємо чистим гумовим зв'язкам "finger to finger"
-        // Але додамо маленькі "пульсуючі" крапки на серединах ліній для веселощів? 
-        // Зробимо акцент: за бажанням, можна додати декілька енергетичних іскор, але не перевантажуємо
+        // Ховаємо підказку, бо магія вже працює
+        instructionUI.style.display = 'none';
+
+        const hand1 = results.multiHandLandmarks[0];
+        const hand2 = results.multiHandLandmarks[1];
+
+        // Точка 8 - це кінчик вказівного пальця
+        const x1 = hand1[8].x * canvasElement.width;
+        const y1 = hand1[8].y * canvasElement.height;
+        const x2 = hand2[8].x * canvasElement.width;
+        const y2 = hand2[8].y * canvasElement.height;
+
+        // --- МАЛЮЄМО "ГУМОВИЙ ПАЛЕЦЬ" ---
+
+        // 1. Темний контур (імітація тіні/краю шкіри)
+        canvasCtx.beginPath();
+        canvasCtx.moveTo(x1, y1);
+        canvasCtx.lineTo(x2, y2);
+        canvasCtx.lineWidth = 55; // Товщина розтягнутого пальця
+        canvasCtx.strokeStyle = '#a66a44'; // Темніший колір
+        canvasCtx.lineCap = 'round';
+        canvasCtx.stroke();
+
+        // 2. Основний колір шкіри
+        canvasCtx.beginPath();
+        canvasCtx.moveTo(x1, y1);
+        canvasCtx.lineTo(x2, y2);
+        canvasCtx.lineWidth = 45;
+        canvasCtx.strokeStyle = '#fadcbd'; // Світлий колір шкіри
+        canvasCtx.lineCap = 'round';
+        canvasCtx.stroke();
+
+        // 3. Відблиск (щоб здавалося об'ємним)
+        canvasCtx.beginPath();
+        canvasCtx.moveTo(x1, y1 - 10);
+        canvasCtx.lineTo(x2, y2 - 10);
+        canvasCtx.lineWidth = 8;
+        canvasCtx.strokeStyle = 'rgba(255, 255, 255, 0.4)'; 
+        canvasCtx.lineCap = 'round';
+        canvasCtx.stroke();
       }
       
-      // --- асистент: малювання підпису + невеликий індикатор кількості рук ---
-      function drawHandCounterHint(handCount, imgW, imgH) {
-        if (!imgW || !imgH) return;
-        ctx.font = `bold ${Math.max(18, Math.floor(imgW / 26))}px 'Segoe UI', 'Inter', monospace`;
-        ctx.shadowBlur = 0;
-        ctx.fillStyle = '#fff0d0';
-        ctx.shadowColor = 'rgba(0,0,0,0.5)';
-        ctx.shadowBlur = 6;
-        if (handCount < 2) {
-          ctx.fillText("✋ + ✋  потрібні дві руки!", imgW * 0.5 - 150, imgH - 40);
-          ctx.font = `${Math.max(14, Math.floor(imgW / 35))}px monospace`;
-          ctx.fillStyle = '#f3bc7c';
-          ctx.fillText("покажи обидві долоні → магія гуми", imgW * 0.5 - 170, imgH - 18);
-        } else {
-          ctx.font = `${Math.max(14, Math.floor(imgW / 38))}px monospace`;
-          ctx.fillStyle = '#ffe2b5';
-          ctx.fillText("⚡ гумові пальці активовані ⚡", imgW * 0.5 - 130, imgH - 20);
-        }
-        ctx.shadowBlur = 0;
-      }
-      
-      // ----- Зворотний виклик MediaPipe (результат обробки кадру) -----
-      hands.onResults((results) => {
-        // Встановлюємо розміри canvas згідно з вхідним зображенням
-        if (!results.image) return;
-        
-        const imgWidth = results.image.width;
-        const imgHeight = results.image.height;
-        
-        canvasElement.width = imgWidth;
-        canvasElement.height = imgHeight;
-        
-        // Спочатку малюємо відео-кадр (дзеркальне відображення вже буде через CSS)
-        ctx.drawImage(results.image, 0, 0, imgWidth, imgHeight);
-        
-        // Отримуємо масив орієнтирів рук (якщо є)
-        const handLandmarksList = results.multiHandLandmarks;
-        const handCount = handLandmarksList ? handLandmarksList.length : 0;
-        
-        // Якщо виявлено дві руки — малюємо гумові зв'язки між відповідними пальцями
-        if (handCount === 2) {
-          drawRubberConnections(handLandmarksList, imgWidth, imgHeight);
-          
-          // === Додаткова родзинка: невеликі пульсуючі кола на долонях для посилення "гумового" стилю ===
-          // можна намалювати центральні точки долонь (орієнтир 0 — зап'ястя або 9 — основа долоні)
-          const palmIndices = [0, 9]; // 0 = зап'ястя, 9 = центр долоні
-          for (let h = 0; h < handLandmarksList.length; h++) {
-            const handPoints = handLandmarksList[h];
-            palmIndices.forEach(idx => {
-              if (handPoints[idx]) {
-                const px = handPoints[idx].x * imgWidth;
-                const py = handPoints[idx].y * imgHeight;
-                ctx.beginPath();
-                ctx.arc(px, py, 12, 0, Math.PI * 2);
-                ctx.fillStyle = '#ffb768';
-                ctx.shadowBlur = 14;
-                ctx.shadowColor = '#ff8c42';
-                ctx.fill();
-                ctx.beginPath();
-                ctx.arc(px, py, 5, 0, Math.PI * 2);
-                ctx.fillStyle = '#ffdd99';
-                ctx.fill();
-              }
-            });
-          }
-          ctx.shadowBlur = 0;
-        }
-        
-        // Якщо рук менше 2 — вивести підказку користувачеві
-        drawHandCounterHint(handCount, imgWidth, imgHeight);
-        
-        // Додатковий "резиновий блиск" на всіх кінчиках пальців навіть якщо 1 рука? 
-        // Але для цілісності ефекту - якщо є хоч одна рука, підсвітимо пальці.
-        if (handCount >= 1) {
-          for (let handIdx = 0; handIdx < handLandmarksList.length; handIdx++) {
-            const landmarks = handLandmarksList[handIdx];
-            for (let t of FINGER_TIPS) {
-              const tip = landmarks[t];
-              if (tip) {
-                const tx = tip.x * imgWidth;
-                const ty = tip.y * imgHeight;
-                ctx.beginPath();
-                ctx.arc(tx, ty, 9, 0, Math.PI * 2);
-                ctx.fillStyle = '#ffbe76';
-                ctx.shadowBlur = 12;
-                ctx.shadowColor = '#f0a55a';
-                ctx.fill();
-                ctx.beginPath();
-                ctx.arc(tx, ty, 4, 0, Math.PI * 2);
-                ctx.fillStyle = '#fff3cf';
-                ctx.fill();
-              }
-            }
-          }
-          ctx.shadowBlur = 0;
-        }
-        
-        // магічний штрих: навколо всіх гумових ліній додати легке сяйво (за рахунок градієнта вище вже зроблено)
-        // додатковий декоративний ефект - "пружні" іскри якщо дві руки поруч (distance < threshold)
-        if (handCount === 2) {
-          const hand1 = handLandmarksList[0];
-          const hand2 = handLandmarksList[1];
-          // ефект "сплеск" коли відстань між великими пальцями мала (як зіткнення гуми)
-          const thumb1 = hand1[4];
-          const thumb2 = hand2[4];
-          if (thumb1 && thumb2) {
-            const dx = (thumb1.x - thumb2.x) * imgWidth;
-            const dy = (thumb1.y - thumb2.y) * imgHeight;
-            const distThumbs = Math.hypot(dx, dy);
-            if (distThumbs < 48) {
-              // малюємо невеликі зірки/іскри між великими пальцями — ефект "гумового злиття"
-              const midX = (thumb1.x * imgWidth + thumb2.x * imgWidth) / 2;
-              const midY = (thumb1.y * imgHeight + thumb2.y * imgHeight) / 2;
-              for (let s = 0; s < 6; s++) {
-                const angle = Date.now() / 200 + s;
-                const rad = (angle % (Math.PI * 2)) + s * 1.2;
-                const offX = Math.cos(rad) * (8 + Math.sin(Date.now() / 80) * 4);
-                const offY = Math.sin(rad) * (8 + Math.cos(Date.now() / 70) * 4);
-                ctx.beginPath();
-                ctx.arc(midX + offX, midY + offY, 3 + Math.sin(Date.now() / 100 + s) * 2, 0, Math.PI * 2);
-                ctx.fillStyle = `rgba(255, 190, 90, ${0.5 + Math.sin(Date.now() / 120) * 0.3})`;
-                ctx.fill();
-              }
-            }
-          }
-        }
-      });
-      
-      // ----- Функція запуску камери з MediaPipe CameraUtils -----
-      let cameraInstance = null;
-      
-      function initCamera() {
-        if (cameraInstance) {
-          cameraInstance.stop();
-        }
-        cameraInstance = new Camera(videoElement, {
-          onFrame: async () => {
-            await hands.send({ image: videoElement });
-          },
-          width: 1280,
-          height: 720,
-          facingMode: "user"
-        });
-        cameraInstance.start().catch(err => {
-          console.warn("Camera error:", err);
-          // повідомлення на canvas у разі помилки доступу
-          const tempCtx = canvasElement.getContext('2d');
-          if (tempCtx && canvasElement) {
-            canvasElement.width = 640;
-            canvasElement.height = 480;
-            tempCtx.fillStyle = "#111";
-            tempCtx.fillRect(0, 0, 640, 480);
-            tempCtx.font = "18px monospace";
-            tempCtx.fillStyle = "#ffaf6a";
-            tempCtx.fillText("⚠️ Доступ до камери не вдалося отримати", 60, 180);
-            tempCtx.fillText("дозволь доступ та перезавантаж сторінку", 70, 250);
-          }
-        });
-      }
-      
-      // Запуск камери після готовності всіх ресурсів
-      initCamera();
-      
-      // Додатковий обробник: якщо користувач натискає на екран (мобільний) – можна спробувати перезапустити камеру
-      // Але просто для надійності додаємо фокус
-      window.addEventListener('load', () => {
-        // Для деяких браузерів - зайвий виклик
-        if (videoElement.readyState === 0) {
-          setTimeout(() => {
-            if (!cameraInstance) initCamera();
-          }, 500);
-        }
-      });
-      
-      // Обробка помилок, якщо відео не запускається через політики
-      videoElement.addEventListener('error', (e) => {
-        console.error('Video error', e);
-        const ctxTemp = canvasElement.getContext('2d');
-        if (ctxTemp && canvasElement) {
-          canvasElement.width = 640;
-          canvasElement.height = 360;
-          ctxTemp.fillStyle = "#1a1a2e";
-          ctxTemp.fillRect(0, 0, 640, 360);
-          ctxTemp.font = "bold 16px monospace";
-          ctxTemp.fillStyle = "#ffb347";
-          ctxTemp.fillText("❗ Дозвольте доступ до камери", 150, 170);
-          ctxTemp.fillText("та оновіть сторінку", 210, 220);
-        }
-      });
-      
-      // адаптивний ресайз: зберігаємо пропорції, але наш canvas оновлюється кожен кадр через results.image
-      // і це правильно масштабується. Ніяких додаткових дій не треба.
-      
-      // Стильний ефект: невелика анімація статусу (бульбашка)
-      const statusLed = document.querySelector('.status-led');
-      if (statusLed) {
-        setInterval(() => {
-          if (statusLed) {
-            // Динамічна зміна кольору в залежності від наявності двох рук? не критично
-          }
-        }, 800);
-      }
-      
-      // Доповнення: чітке пояснення консолі (додатково)
-      console.log('🔥 Магічні гумові пальці активовано! покажи дві руки перед камерою — будуть зв’язки між пальцями :)');
-    })();
+      canvasCtx.restore();
+    });
+
+    // Запускаємо веб-камеру
+    const camera = new Camera(videoElement, {
+      onFrame: async () => {
+        await hands.send({image: videoElement});
+      },
+      width: 1280,
+      height: 720
+    });
+    
+    camera.start();
   </script>
 </body>
 </html>

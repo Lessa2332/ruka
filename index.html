@@ -3,10 +3,12 @@
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=no">
-  <title>Гумове видовження пальців · Rubber Finger Stretch</title>
-  <!-- MediaPipe Hands -->
+  <title>ГУМА-ГУМА NO MI: Реальне видовження пальців (Image Warping)</title>
+  <!-- MediaPipe Hands для відстеження -->
   <script src="https://cdn.jsdelivr.net/npm/@mediapipe/camera_utils/camera_utils.js" crossorigin="anonymous"></script>
   <script src="https://cdn.jsdelivr.net/npm/@mediapipe/hands/hands.js" crossorigin="anonymous"></script>
+  <!-- Homography.js: легковаговий і високопродуктивний інструмент для реального спотворення зображень -->
+  <script src="https://cdn.jsdelivr.net/gh/Eric-Canas/Homography.js@1.4/HomographyLightweight.min.js"></script>
   <style>
     * {
       margin: 0;
@@ -15,21 +17,33 @@
       user-select: none;
     }
     body {
-      background: radial-gradient(circle at 20% 30%, #0a0f1e, #030507);
+      background: #0a0f1e;
       overflow: hidden;
       font-family: 'Segoe UI', 'Poppins', system-ui, monospace;
     }
-    canvas {
+    .canvas-container {
       position: fixed;
       top: 0;
       left: 0;
       width: 100vw;
       height: 100vh;
+      background: #000;
+    }
+    canvas {
+      position: absolute;
+      top: 0;
+      left: 0;
+      width: 100%;
+      height: 100%;
       object-fit: cover;
-      transform: scaleX(-1);
       display: block;
-      cursor: none;
+    }
+    #canvasOutput {
+      transform: scaleX(-1);
       z-index: 2;
+    }
+    #canvasBackground {
+      z-index: 1;
     }
     .info-panel {
       position: fixed;
@@ -37,22 +51,22 @@
       left: 0;
       right: 0;
       text-align: center;
-      z-index: 10;
+      z-index: 20;
       pointer-events: none;
       font-weight: 500;
       text-shadow: 0 2px 8px rgba(0,0,0,0.6);
     }
     .badge {
       display: inline-block;
-      background: rgba(0, 0, 0, 0.7);
+      background: rgba(0, 0, 0, 0.75);
       backdrop-filter: blur(10px);
       padding: 10px 20px;
       border-radius: 60px;
       color: #ffdfb3;
       font-size: 0.9rem;
       letter-spacing: 0.5px;
-      border: 1px solid rgba(255, 180, 70, 0.5);
-      box-shadow: 0 0 15px rgba(255, 100, 20, 0.3);
+      border: 1px solid rgba(255, 180, 70, 0.6);
+      box-shadow: 0 0 18px rgba(255, 80, 20, 0.4);
     }
     .badge span {
       color: #ffb347;
@@ -64,7 +78,7 @@
       height: 10px;
       border-radius: 10px;
       background-color: #ff884d;
-      box-shadow: 0 0 6px #ffaa55;
+      box-shadow: 0 0 8px #ffaa55;
       margin-right: 8px;
       animation: pulse 1.2s infinite;
     }
@@ -78,13 +92,13 @@
       right: 16px;
       color: rgba(255,220,150,0.6);
       font-size: 11px;
-      z-index: 10;
       font-family: monospace;
       background: rgba(0,0,0,0.4);
       padding: 4px 12px;
       border-radius: 40px;
       backdrop-filter: blur(4px);
       pointer-events: none;
+      z-index: 20;
     }
     @media (max-width: 600px) {
       .badge { font-size: 0.7rem; padding: 6px 14px; }
@@ -92,311 +106,364 @@
   </style>
 </head>
 <body>
-  <video id="videoElement" style="display: none;" autoplay playsinline muted></video>
-  <canvas id="canvasElement"></canvas>
-  <div class="info-panel">
-    <div class="badge">
-      <span class="status-led"></span>
-      🧬 ГУМОВЕ ВИДОВЖЕННЯ | REAL RUBBER STRETCH 🧬
-      <span style="margin:0 6px">⚡</span> дві руки → пальці тягнуться
-    </div>
+<div class="canvas-container">
+  <canvas id="canvasBackground"></canvas>
+  <canvas id="canvasOutput"></canvas>
+</div>
+<div class="info-panel">
+  <div class="badge">
+    <span class="status-led"></span>
+    🧬 РЕАЛЬНЕ ВИТЯГУВАННЯ (WARP) | HOMOGRAFIA 🧬
+    <span style="margin:0 6px">⚡</span> ДВІ РУКИ → ПАЛЕЦЬ ТЯГНЕТЬСЯ
   </div>
-  <div class="watermark">● видовження пальця замість ліній ● справжній гумовий ефект</div>
+</div>
+<div class="watermark">⚡ справжнє спотворення пікселів (image warping) ⚡</div>
 
-  <script>
-    (function(){
-      // --- DOM елементи ---
-      const video = document.getElementById('videoElement');
-      const canvas = document.getElementById('canvasElement');
-      const ctx = canvas.getContext('2d');
+<script>
+  (function(){
+    // --- Отримуємо canvas ---
+    const canvasBg = document.getElementById('canvasBackground');
+    const canvasOut = document.getElementById('canvasOutput');
+    const ctxBg = canvasBg.getContext('2d');
+    const ctxOut = canvasOut.getContext('2d');
 
-      // --- налаштування MediaPipe Hands ---
-      const hands = new Hands({
-        locateFile: (file) => `https://cdn.jsdelivr.net/npm/@mediapipe/hands/${file}`
-      });
-      hands.setOptions({
-        maxNumHands: 2,
-        modelComplexity: 1,
-        minDetectionConfidence: 0.65,
-        minTrackingConfidence: 0.7
-      });
+    // --- Налаштування відео ---
+    const videoElement = document.createElement('video');
+    videoElement.setAttribute('autoplay', '');
+    videoElement.setAttribute('playsinline', '');
+    videoElement.style.display = 'none';
+    document.body.appendChild(videoElement);
 
-      // Індекси ключових точок MediaPipe
-      // Для реалістичного видовження беремо основу пальця (суглоб біля долоні) та кінчик.
-      // Для вказівного: base = 5 (MCP), tip = 8
-      // Для середнього: base = 9? ні, 9 це долоня, краще base = 12? Ні, base має бути 9 або 5? 
-      // Правильно: для кожного пальця є своя основа:
-      // INDEX: 5 (MCP) -> 8 (tip)
-      // MIDDLE: 9 (MCP) -> 12 (tip)
-      // RING: 13 -> 16
-      // PINKY: 17 -> 20
-      // Але для ефекту видовження найкраще виглядає вказівний + середній.
-      // Щоб зробити видовження максимально «гумовим», ми використаємо INDEX та MIDDLE.
+    // --- MediaPipe Hands ---
+    const hands = new Hands({
+      locateFile: (file) => `https://cdn.jsdelivr.net/npm/@mediapipe/hands/${file}`
+    });
+    hands.setOptions({
+      maxNumHands: 2,
+      modelComplexity: 1,
+      minDetectionConfidence: 0.65,
+      minTrackingConfidence: 0.7
+    });
+
+    // Індекси MediaPipe: великий, вказівний, середній, безіменний, мізинець
+    const FINGER_TIPS = [4, 8, 12, 16, 20];
+    // Бази пальців (суглоби біля долоні) для кращого витягування: вказівний, середній
+    const BASE_INDICES = [5, 9];
+    // Додамо повний список пар (база, кінчик), щоб охопити всі пальці але для плавності залишимо основні два
+    // але для видовищності додамо також безіменний і мізинець? Вони менш виразні, але можна.
+    // Обираю вказівний + середній – найпомітніші.
+    const ACTIVE_FINGERS = [
+      { base: 5, tip: 8, name: 'index' },
+      { base: 9, tip: 12, name: 'middle' }
+    ];
+
+    // Розміри зображення
+    let imageWidth = 0, imageHeight = 0;
+
+    // Функція для warp (спотворення) фрагмента зображення
+    // Використовує Homography.js для перспективного перетворення прямокутної області пальця
+    // srcQuad – координати джерела (нормалізовані або абсолютні), dstQuad – координати призначення.
+    // Ми будемо передавати координати в пікселях (x, y)
+    async function warpFingerRegion(sourceCanvas, srcQuad, dstQuad, outputCtx, dstX, dstY, dstW, dstH) {
+      if (!sourceCanvas || srcQuad.length !== 4 || dstQuad.length !== 4) return;
+      try {
+        // Використовуємо Homography.js: створюємо екземпляр
+        const homography = new homography.Homography();
+        // Виконуємо перспективне перетворення (проєктивне) – найкраще для витягування
+        const warpedImage = await homography.warp({
+          image: sourceCanvas,
+          srcPoints: srcQuad,   // масив з 4 точок [{x, y}]
+          dstPoints: dstQuad,   // куди трансформувати
+          type: 'projective',   // проєктивне спотворення -> гума
+          precision: 1
+        });
+        // малюємо спотворене зображення на вихідний canvas (ctxOut) у вказаній позиції
+        if (warpedImage) {
+          outputCtx.drawImage(warpedImage, dstX, dstY, dstW, dstH);
+        }
+      } catch(e) {
+        console.warn("warp error", e);
+      }
+    }
+
+    // --- Функція для отримання області навколо пальця (чотирикутник) ---
+    // Отримує точку основи та кінчика, повертає 4 точки (кути) прямокутника, орієнтованого вздовж пальця
+    function getFingerQuad(baseX, baseY, tipX, tipY, widthFactor = 0.08, lengthExtension = 1.0) {
+      // вектор напрямку від основи до кінчика
+      let dx = tipX - baseX;
+      let dy = tipY - baseY;
+      const len = Math.hypot(dx, dy);
+      if (len < 0.001) return null;
+      dx /= len;
+      dy /= len;
+      // перпендикулярний вектор
+      const perpX = -dy;
+      const perpY = dx;
       
-      const STRETCH_FINGERS = [
-        { name: 'index', baseIdx: 5, tipIdx: 8 },   // вказівний
-        { name: 'middle', baseIdx: 9, tipIdx: 12 }  // середній
-      ];
+      // Ширина області пропорційна довжині пальця (але фіксована основа)
+      const baseWidth = (Math.min(0.12, widthFactor * 1.2)) * (imageWidth || 640);
+      const tipWidth = (Math.min(0.08, widthFactor * 0.8)) * (imageWidth || 640);
       
-      // Додатково для повноти — великий палець теж можна, але він коротший, ефект менш виразний.
+      // точки: основа (дві сторони)
+      const p1 = { x: baseX + perpX * baseWidth, y: baseY + perpY * baseWidth };
+      const p2 = { x: baseX - perpX * baseWidth, y: baseY - perpY * baseWidth };
+      // точки кінчика
+      const p3 = { x: tipX - perpX * tipWidth, y: tipY - perpY * tipWidth };
+      const p4 = { x: tipX + perpX * tipWidth, y: tipY + perpY * tipWidth };
       
-      // --- кольори шкіри (градієнт для реалістичного видовження) ---
-      const SKIN_BASE = '#e2b78d';
-      const SKIN_MID = '#d9a56e';
-      const SKIN_TIP = '#c68652';
-      const NAIL_COLOR = '#f5e2c1';
-      
-      // --- допоміжна функція: малювання видовженого пальця від основи (base) до цільової точки (targetPoint) ---
-      // Щоб виглядало як справжнє видовження, ми малюємо залиту фігуру:
-      // від основи пальця (baseX, baseY) до targetPoint, з товщиною, що звужується.
-      // Крім того, малюємо текстуру нігтя на кінці.
-      function drawStretchedFinger(baseX, baseY, targetX, targetY, originalTipX, originalTipY, widthAtBase = 22, widthAtTip = 12) {
-        // Вектор напрямку
-        const dx = targetX - baseX;
-        const dy = targetY - baseY;
-        const length = Math.hypot(dx, dy);
-        if (length < 0.01) return;
-        
-        const angle = Math.atan2(dy, dx);
-        const perpX = -Math.sin(angle);
-        const perpY = Math.cos(angle);
-        
-        // Ширина в основі та на кінці (плавне звуження)
-        const w1 = widthAtBase;
-        const w2 = Math.max(6, widthAtTip * (1 - Math.min(0.6, length / 400))); // чим далі, тим тонший кінчик
-        
-        // Координати чотирьох кутів трапеції
-        const x1a = baseX + perpX * (w1 / 2);
-        const y1a = baseY + perpY * (w1 / 2);
-        const x1b = baseX - perpX * (w1 / 2);
-        const y1b = baseY - perpY * (w1 / 2);
-        
-        const x2a = targetX + perpX * (w2 / 2);
-        const y2a = targetY + perpY * (w2 / 2);
-        const x2b = targetX - perpX * (w2 / 2);
-        const y2b = targetY - perpY * (w2 / 2);
-        
-        ctx.save();
-        ctx.shadowBlur = 8;
-        ctx.shadowColor = 'rgba(0,0,0,0.3)';
-        
-        // Градієнт уздовж пальця (шкіра)
-        const gradient = ctx.createLinearGradient(baseX, baseY, targetX, targetY);
-        gradient.addColorStop(0, SKIN_BASE);
-        gradient.addColorStop(0.4, SKIN_MID);
-        gradient.addColorStop(0.8, SKIN_TIP);
-        gradient.addColorStop(1, '#b37b48');
-        
-        ctx.beginPath();
-        ctx.moveTo(x1a, y1a);
-        ctx.lineTo(x1b, y1b);
-        ctx.lineTo(x2b, y2b);
-        ctx.lineTo(x2a, y2a);
-        ctx.closePath();
-        ctx.fillStyle = gradient;
-        ctx.fill();
-        
-        // Додаємо легкі "зморшки" або лінії згину (для правдоподібності)
-        ctx.beginPath();
-        ctx.moveTo(baseX + perpX * (w1 * 0.3), baseY + perpY * (w1 * 0.3));
-        ctx.lineTo(baseX - perpX * (w1 * 0.3), baseY - perpY * (w1 * 0.3));
-        ctx.lineWidth = 1.5;
-        ctx.strokeStyle = '#b57946';
-        ctx.shadowBlur = 2;
-        ctx.stroke();
-        
-        // Малюємо "ніготь" на кінці видовження (заокруглений овал)
-        const nailSize = w2 * 0.7;
-        ctx.beginPath();
-        ctx.ellipse(targetX, targetY, nailSize * 0.8, nailSize * 0.5, angle, 0, Math.PI * 2);
-        ctx.fillStyle = NAIL_COLOR;
-        ctx.shadowBlur = 4;
-        ctx.fill();
-        ctx.beginPath();
-        ctx.ellipse(targetX - dx * 0.08, targetY - dy * 0.08, nailSize * 0.5, nailSize * 0.35, angle, 0, Math.PI * 2);
-        ctx.fillStyle = '#fff3e0';
-        ctx.fill();
-        
-        // Підсвітка на кінчику (блиск)
-        ctx.beginPath();
-        ctx.arc(targetX - dx*0.05, targetY - dy*0.05, w2 * 0.2, 0, Math.PI*2);
-        ctx.fillStyle = 'rgba(255,245,210,0.7)';
-        ctx.fill();
-        
-        ctx.restore();
-        
-        // Перекриваємо оригінальний кінчик пальця (щоб не було роздвоєння) - малюємо пляму кольору шкіри
-        ctx.save();
-        ctx.shadowBlur = 0;
-        ctx.beginPath();
-        ctx.arc(originalTipX, originalTipY, widthAtTip * 0.8, 0, Math.PI * 2);
-        ctx.fillStyle = SKIN_TIP;
-        ctx.fill();
-        ctx.restore();
+      return [p1, p2, p3, p4];
+    }
+
+    // Основний процес: копіюємо кадр, визначаємо дві руки, видовжуємо пальці
+    async function processFrame() {
+      if (!videoElement.videoWidth || !videoElement.videoHeight) {
+        requestAnimationFrame(processFrame);
+        return;
       }
       
-      // --- Основний колбек MediaPipe ---
-      hands.onResults((results) => {
-        if (!results.image) return;
-        const imgWidth = results.image.width;
-        const imgHeight = results.image.height;
-        canvas.width = imgWidth;
-        canvas.height = imgHeight;
+      // Оновлюємо розміри canvas
+      const w = videoElement.videoWidth;
+      const h = videoElement.videoHeight;
+      if (imageWidth !== w || imageHeight !== h) {
+        imageWidth = w;
+        imageHeight = h;
+        canvasBg.width = w;
+        canvasBg.height = h;
+        canvasOut.width = w;
+        canvasOut.height = h;
+      }
+      
+      // Малюємо оригінальний кадр на фоновий canvas (без warp)
+      ctxBg.drawImage(videoElement, 0, 0, w, h);
+      
+      // Отримуємо landmarks
+      const results = await hands.send({ image: videoElement });
+      const landmarksList = results.multiHandLandmarks;
+      const handCount = landmarksList ? landmarksList.length : 0;
+      
+      // Спочатку копіюємо фон на вихідний canvas (чистий стан)
+      ctxOut.clearRect(0, 0, w, h);
+      ctxOut.drawImage(canvasBg, 0, 0, w, h);
+      
+      // Якщо дві руки — робимо warp
+      if (handCount === 2) {
+        const hand1 = landmarksList[0];
+        const hand2 = landmarksList[1];
         
-        // Відображаємо відеокадр
-        ctx.drawImage(results.image, 0, 0, imgWidth, imgHeight);
-        
-        const landmarksList = results.multiHandLandmarks;
-        const handCount = landmarksList ? landmarksList.length : 0;
-        
-        // Якщо виявлено дві руки — запускаємо магію видовження
-        if (handCount === 2) {
-          const handA = landmarksList[0];
-          const handB = landmarksList[1];
+        // Для кожного пальця (base, tip) робимо видовження від руки1 до руки2
+        for (let finger of ACTIVE_FINGERS) {
+          // Отримуємо базову точку пальця на першій руці та кінчик на другій руці
+          const basePoint = hand1[finger.base];
+          const tipSelf = hand1[finger.tip];
+          const targetTip = hand2[finger.tip];
+          if (!basePoint || !tipSelf || !targetTip) continue;
           
-          // Для кожного пальця (вказівний + середній) робимо видовження від основи однієї руки до кінчика тієї ж руки?
-          // Ні! Щоб палець "видовжився" до пальця другої руки, потрібно взяти основу пальця першої руки, а кінчик — відповідний кінчик другої руки.
-          // Саме так створюється ілюзія, що палець тягнеться до іншої руки.
-          for (let f of STRETCH_FINGERS) {
-            const baseA = handA[f.baseIdx];
-            const tipA = handA[f.tipIdx];
-            const tipB = handB[f.tipIdx];
-            if (!baseA || !tipA || !tipB) continue;
-            
-            const baseX = baseA.x * imgWidth;
-            const baseY = baseA.y * imgHeight;
-            const targetX = tipB.x * imgWidth;
-            const targetY = tipB.y * imgHeight;
-            const origTipX = tipA.x * imgWidth;
-            const origTipY = tipA.y * imgHeight;
-            
-            // Відстань між кінчиками — якщо занадто велика, трохи зменшуємо товщину, але ефект все одно працює
-            const dist = Math.hypot(targetX - origTipX, targetY - origTipY);
-            // Динамічна товщина: чим далі, тим трохи тонший палець (як справжня гума)
-            let baseWidth = 26;
-            let tipWidth = 14;
-            if (dist > 300) {
-              tipWidth = 10;
-              baseWidth = 24;
-            } else if (dist < 80) {
-              tipWidth = 18;
-              baseWidth = 28;
+          // перетворюємо нормалізовані координати (0-1) у пікселі
+          const baseX = basePoint.x * w;
+          const baseY = basePoint.y * h;
+          const origTipX = tipSelf.x * w;
+          const origTipY = tipSelf.y * h;
+          const targetX = targetTip.x * w;
+          const targetY = targetTip.y * h;
+          
+          // Відстань між кінчиками: якщо занадто далеко, warp ефект все одно гарний
+          // Отримуємо чотирикутник джерела (ділянку навколо пальця від основи до кінчика)
+          const srcQuad = getFingerQuad(baseX, baseY, origTipX, origTipY, 0.09, 1.0);
+          if (!srcQuad) continue;
+          
+          // Цільовий чотирикутник: та сама основа, але кінчик витягується до targetTip
+          // Злегка розширимо кінчик для плавності
+          const dstQuad = getFingerQuad(baseX, baseY, targetX, targetY, 0.09, 1.0);
+          if (!dstQuad) continue;
+          
+          // Форматуємо точки для Homography.js (масив {x, y})
+          const srcPoints = srcQuad.map(p => ({ x: p.x, y: p.y }));
+          const dstPoints = dstQuad.map(p => ({ x: p.x, y: p.y }));
+          
+          // Вирізаємо зображення області з canvasBg (оригінальне відео)
+          // Краще взяти мінімальний bounding box навколо srcQuad
+          let minX = Math.min(...srcQuad.map(p => p.x));
+          let minY = Math.min(...srcQuad.map(p => p.y));
+          let maxX = Math.max(...srcQuad.map(p => p.x));
+          let maxY = Math.max(...srcQuad.map(p => p.y));
+          minX = Math.max(0, minX - 15);
+          minY = Math.max(0, minY - 15);
+          maxX = Math.min(w, maxX + 15);
+          maxY = Math.min(h, maxY + 15);
+          const regionWidth = maxX - minX;
+          const regionHeight = maxY - minY;
+          if (regionWidth < 10 || regionHeight < 10) continue;
+          
+          // Тимчасовий canvas для виділеної ділянки
+          const tempCanvas = document.createElement('canvas');
+          tempCanvas.width = regionWidth;
+          tempCanvas.height = regionHeight;
+          const tempCtx = tempCanvas.getContext('2d');
+          tempCtx.drawImage(canvasBg, minX, minY, regionWidth, regionHeight, 0, 0, regionWidth, regionHeight);
+          
+          // Коригуємо srcPoints і dstPoints відносно виділеної ділянки
+          const srcPointsAdj = srcPoints.map(p => ({ x: p.x - minX, y: p.y - minY }));
+          const dstPointsAdj = dstPoints.map(p => ({ x: p.x - minX, y: p.y - minY }));
+          
+          // Застосовуємо warp до виділеної ділянки
+          try {
+            const homography = new homography.Homography();
+            const warpedImg = await homography.warp({
+              image: tempCanvas,
+              srcPoints: srcPointsAdj,
+              dstPoints: dstPointsAdj,
+              type: 'projective',
+              precision: 0.5
+            });
+            if (warpedImg) {
+              // Малюємо спотворене зображення поверх вихідного canvas у правильній позиції
+              ctxOut.drawImage(warpedImg, minX, minY, regionWidth, regionHeight);
+            } else {
+              // fallback: просто малюємо оригінальну ділянку
+              ctxOut.drawImage(tempCanvas, minX, minY);
             }
-            
-            // Малюємо видовжений палець від основи першої руки до кінчика другої руки
-            drawStretchedFinger(baseX, baseY, targetX, targetY, origTipX, origTipY, baseWidth, tipWidth);
-            
-            // ТАКОЖ зворотний бік: палець другої руки видовжується до кінчика першої (симетричний ефект)
-            const baseB = handB[f.baseIdx];
-            if (baseB) {
-              const baseBX = baseB.x * imgWidth;
-              const baseBY = baseB.y * imgHeight;
-              const targetReverseX = tipA.x * imgWidth;
-              const targetReverseY = tipA.y * imgHeight;
-              const origTipBX = tipB.x * imgWidth;
-              const origTipBY = tipB.y * imgHeight;
-              drawStretchedFinger(baseBX, baseBY, targetReverseX, targetReverseY, origTipBX, origTipBY, baseWidth, tipWidth);
-            }
+          } catch(e) {
+            console.debug("warp error", e);
+            ctxOut.drawImage(tempCanvas, minX, minY);
           }
           
-          // Додатковий акцент: "гумові" сполучення між великими пальцями (для стилю)
-          const thumbA = handA[4];
-          const thumbB = handB[4];
-          if (thumbA && thumbB) {
-            const x1 = thumbA.x * imgWidth;
-            const y1 = thumbA.y * imgHeight;
-            const x2 = thumbB.x * imgWidth;
-            const y2 = thumbB.y * imgHeight;
-            ctx.save();
-            ctx.beginPath();
-            ctx.moveTo(x1, y1);
-            ctx.lineTo(x2, y2);
-            ctx.lineWidth = 18;
-            ctx.strokeStyle = '#d49c6c';
-            ctx.shadowBlur = 12;
-            ctx.stroke();
-            ctx.beginPath();
-            ctx.lineWidth = 6;
-            ctx.strokeStyle = '#fcd7a0';
-            ctx.stroke();
-            ctx.restore();
-          }
-        }
-        
-        // --- Підказки та UI ---
-        ctx.font = `bold ${Math.max(18, Math.floor(imgWidth / 28))}px 'Segoe UI', monospace`;
-        ctx.shadowBlur = 6;
-        ctx.fillStyle = '#fff0d0';
-        ctx.shadowColor = 'rgba(0,0,0,0.6)';
-        if (handCount < 2) {
-          ctx.fillText("✋ + ✋  покажи дві руки → пальці видовжаться", imgWidth * 0.5 - 210, imgHeight - 40);
-          ctx.font = `${Math.max(14, Math.floor(imgWidth / 38))}px monospace`;
-          ctx.fillStyle = '#f7c48b';
-          ctx.fillText("реалістичне гумове видовження (справжній stretch)", imgWidth * 0.5 - 230, imgHeight - 18);
-        } else {
-          ctx.font = `${Math.max(15, Math.floor(imgWidth / 40))}px monospace`;
-          ctx.fillStyle = '#ffe5bc';
-          ctx.fillText("🧴 гумові пальці тягнуться один до одного 🧴", imgWidth * 0.5 - 200, imgHeight - 20);
-        }
-        
-        // Додатково малюємо невеликі «іскри» на кінчиках видовжених пальців для ефекту "гума-гума"
-        if (handCount === 2) {
-          for (let f of STRETCH_FINGERS) {
-            const tipA = landmarksList[0][f.tipIdx];
-            const tipB = landmarksList[1][f.tipIdx];
-            if (tipA && tipB) {
-              const ax = tipA.x * imgWidth;
-              const ay = tipA.y * imgHeight;
-              const bx = tipB.x * imgWidth;
-              const by = tipB.y * imgHeight;
-              // маленькі зірочки на кінчиках
-              for (let i = 0; i < 3; i++) {
-                const time = Date.now() / 200;
-                const offX = Math.sin(time + i) * 5;
-                const offY = Math.cos(time * 1.3 + i) * 5;
-                ctx.beginPath();
-                ctx.arc(ax + offX, ay + offY, 3 + Math.sin(time)*2, 0, Math.PI*2);
-                ctx.fillStyle = `rgba(255, 200, 100, ${0.5 + Math.sin(time)*0.3})`;
-                ctx.fill();
-                ctx.beginPath();
-                ctx.arc(bx - offX, by + offY, 3 + Math.cos(time*1.2)*2, 0, Math.PI*2);
-                ctx.fill();
+          // ДОДАТКОВИЙ ЕФЕКТ: також видовжуємо палець із другої руки до першої (симетрично)
+          const basePoint2 = hand2[finger.base];
+          const tipSelf2 = hand2[finger.tip];
+          const targetTip2 = hand1[finger.tip];
+          if (basePoint2 && tipSelf2 && targetTip2) {
+            const baseX2 = basePoint2.x * w;
+            const baseY2 = basePoint2.y * h;
+            const origTipX2 = tipSelf2.x * w;
+            const origTipY2 = tipSelf2.y * h;
+            const targetX2 = targetTip2.x * w;
+            const targetY2 = targetTip2.y * h;
+            
+            const srcQuad2 = getFingerQuad(baseX2, baseY2, origTipX2, origTipY2, 0.09, 1.0);
+            if (srcQuad2) {
+              const dstQuad2 = getFingerQuad(baseX2, baseY2, targetX2, targetY2, 0.09, 1.0);
+              if (dstQuad2) {
+                let minX2 = Math.min(...srcQuad2.map(p => p.x));
+                let minY2 = Math.min(...srcQuad2.map(p => p.y));
+                let maxX2 = Math.max(...srcQuad2.map(p => p.x));
+                let maxY2 = Math.max(...srcQuad2.map(p => p.y));
+                minX2 = Math.max(0, minX2 - 15);
+                minY2 = Math.max(0, minY2 - 15);
+                maxX2 = Math.min(w, maxX2 + 15);
+                maxY2 = Math.min(h, maxY2 + 15);
+                const rw = maxX2 - minX2;
+                const rh = maxY2 - minY2;
+                if (rw > 10 && rh > 10) {
+                  const tempCanvas2 = document.createElement('canvas');
+                  tempCanvas2.width = rw;
+                  tempCanvas2.height = rh;
+                  const tempCtx2 = tempCanvas2.getContext('2d');
+                  tempCtx2.drawImage(canvasBg, minX2, minY2, rw, rh, 0, 0, rw, rh);
+                  const srcP2 = srcQuad2.map(p => ({ x: p.x - minX2, y: p.y - minY2 }));
+                  const dstP2 = dstQuad2.map(p => ({ x: p.x - minX2, y: p.y - minY2 }));
+                  const hom2 = new homography.Homography();
+                  const warped2 = await hom2.warp({
+                    image: tempCanvas2,
+                    srcPoints: srcP2,
+                    dstPoints: dstP2,
+                    type: 'projective'
+                  });
+                  if (warped2) {
+                    ctxOut.drawImage(warped2, minX2, minY2, rw, rh);
+                  } else {
+                    ctxOut.drawImage(tempCanvas2, minX2, minY2);
+                  }
+                }
               }
             }
           }
         }
         
-        // скидаємо тіні для наступних кадрів
-        ctx.shadowBlur = 0;
-      });
-      
-      // --- Запуск камери ---
-      let camera = null;
-      function startCamera() {
-        if (camera) camera.stop();
-        camera = new Camera(video, {
-          onFrame: async () => { await hands.send({ image: video }); },
-          width: 1280,
-          height: 720,
-          facingMode: "user"
-        });
-        camera.start().catch(err => {
-          console.error("Camera error:", err);
-          ctx.fillStyle = "#1a1a2e";
-          ctx.fillRect(0, 0, canvas.width, canvas.height);
-          ctx.fillStyle = "#ffb366";
-          ctx.font = "18px monospace";
-          ctx.fillText("⚠️ Доступ до камери заборонено. Дозвольте та оновіть сторінку.", 80, 200);
-        });
+        // Додатковий ефект: видовження великого пальця для ще більшої "гума-гума но мі"
+        try {
+          const thumbTip1 = hand1[4];
+          const thumbTip2 = hand2[4];
+          const thumbBase1 = hand1[2];
+          const thumbBase2 = hand2[2];
+          if (thumbTip1 && thumbTip2 && thumbBase1 && thumbBase2) {
+            const tx1 = thumbTip1.x * w, ty1 = thumbTip1.y * h;
+            const tx2 = thumbTip2.x * w, ty2 = thumbTip2.y * h;
+            const bx1 = thumbBase1.x * w, by1 = thumbBase1.y * h;
+            const srcThumbQuad = getFingerQuad(bx1, by1, tx1, ty1, 0.07);
+            if (srcThumbQuad) {
+              const dstThumbQuad = getFingerQuad(bx1, by1, tx2, ty2, 0.07);
+              if (dstThumbQuad) {
+                let minX = Math.min(...srcThumbQuad.map(p => p.x));
+                let minY = Math.min(...srcThumbQuad.map(p => p.y));
+                let maxX = Math.max(...srcThumbQuad.map(p => p.x));
+                let maxY = Math.max(...srcThumbQuad.map(p => p.y));
+                minX = Math.max(0, minX-12);
+                minY = Math.max(0, minY-12);
+                maxX = Math.min(w, maxX+12);
+                maxY = Math.min(h, maxY+12);
+                const rw = maxX-minX, rh = maxY-minY;
+                if(rw>8 && rh>8){
+                  const tCanvas = document.createElement('canvas');
+                  tCanvas.width = rw; tCanvas.height = rh;
+                  tCanvas.getContext('2d').drawImage(canvasBg, minX, minY, rw, rh, 0, 0, rw, rh);
+                  const srcP = srcThumbQuad.map(p=>({x:p.x-minX, y:p.y-minY}));
+                  const dstP = dstThumbQuad.map(p=>({x:p.x-minX, y:p.y-minY}));
+                  const hg = new homography.Homography();
+                  const warpedThumb = await hg.warp({ image: tCanvas, srcPoints: srcP, dstPoints: dstP, type:'projective' });
+                  if(warpedThumb) ctxOut.drawImage(warpedThumb, minX, minY, rw, rh);
+                }
+              }
+            }
+          }
+        } catch(e) { console.warn(e); }
       }
-      startCamera();
       
-      // Перезапуск при помилках відео
-      video.addEventListener('error', () => {
-        console.warn("Video error, retrying...");
-        setTimeout(startCamera, 1000);
+      // Малюємо підказки
+      ctxOut.font = `bold ${Math.max(18, Math.floor(w / 28))}px 'Segoe UI', monospace`;
+      ctxOut.shadowBlur = 6;
+      ctxOut.fillStyle = '#fff0d0';
+      ctxOut.shadowColor = 'rgba(0,0,0,0.6)';
+      if (handCount < 2) {
+        ctxOut.fillText("✋ + ✋  покажи дві руки → реальне витягування пікселів", w * 0.5 - 240, h - 40);
+        ctxOut.font = `${Math.max(14, Math.floor(w / 38))}px monospace`;
+        ctxOut.fillStyle = '#f7c48b';
+        ctxOut.fillText("image warping (справжня деформація)", w * 0.5 - 170, h - 18);
+      } else {
+        ctxOut.font = `${Math.max(15, Math.floor(w / 42))}px monospace`;
+        ctxOut.fillStyle = '#ffe5bc';
+        ctxOut.fillText("⚡ ГОМОГРАФІЯ АКТИВОВАНА: ПАЛЬЦІ ТЯГНУТЬСЯ ⚡", w * 0.5 - 210, h - 20);
+      }
+      ctxOut.shadowBlur = 0;
+      
+      requestAnimationFrame(processFrame);
+    }
+    
+    // Ініціалізація камери та запуск
+    let camera = null;
+    function startCamera() {
+      if (camera) camera.stop();
+      camera = new Camera(videoElement, {
+        onFrame: async () => {},
+        width: 1280,
+        height: 720,
+        facingMode: "user"
       });
-    })();
-  </script>
+      camera.start().then(() => {
+        console.log("Camera started");
+        processFrame();
+      }).catch(err => {
+        console.error("Camera error:", err);
+        ctxOut.fillStyle = "#1a1a2e";
+        ctxOut.fillRect(0, 0, canvasOut.width, canvasOut.height);
+        ctxOut.fillStyle = "#ffb366";
+        ctxOut.font = "18px monospace";
+        ctxOut.fillText("⚠️ Дозвольте доступ до камери та перезавантажте сторінку", 80, 200);
+      });
+    }
+    
+    startCamera();
+    videoElement.addEventListener('error', () => setTimeout(startCamera, 1000));
+  })();
+</script>
 </body>
 </html>

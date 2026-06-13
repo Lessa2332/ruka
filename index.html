@@ -2,13 +2,10 @@
 <html lang="uk">
 <head>
   <meta charset="UTF-8">
-  <meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=no">
-  <title>ГУМА-ГУМА NO MI: Реальне видовження пальців (Image Warping)</title>
-  <!-- MediaPipe Hands для відстеження -->
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=no, viewport-fit=cover">
+  <title>ГУМОВІ ПАЛЬЦІ · ЛЕГКИЙ WARP (мобільний)</title>
   <script src="https://cdn.jsdelivr.net/npm/@mediapipe/camera_utils/camera_utils.js" crossorigin="anonymous"></script>
   <script src="https://cdn.jsdelivr.net/npm/@mediapipe/hands/hands.js" crossorigin="anonymous"></script>
-  <!-- Homography.js: легковаговий і високопродуктивний інструмент для реального спотворення зображень -->
-  <script src="https://cdn.jsdelivr.net/gh/Eric-Canas/Homography.js@1.4/HomographyLightweight.min.js"></script>
   <style>
     * {
       margin: 0;
@@ -19,451 +16,336 @@
     body {
       background: #0a0f1e;
       overflow: hidden;
-      font-family: 'Segoe UI', 'Poppins', system-ui, monospace;
     }
-    .canvas-container {
+    canvas {
       position: fixed;
       top: 0;
       left: 0;
       width: 100vw;
       height: 100vh;
-      background: #000;
-    }
-    canvas {
-      position: absolute;
-      top: 0;
-      left: 0;
-      width: 100%;
-      height: 100%;
       object-fit: cover;
       display: block;
     }
-    #canvasOutput {
+    #canvas {
       transform: scaleX(-1);
-      z-index: 2;
     }
-    #canvasBackground {
-      z-index: 1;
-    }
-    .info-panel {
+    .info {
       position: fixed;
-      bottom: 24px;
+      bottom: 20px;
       left: 0;
       right: 0;
       text-align: center;
       z-index: 20;
       pointer-events: none;
-      font-weight: 500;
-      text-shadow: 0 2px 8px rgba(0,0,0,0.6);
+      font-family: monospace;
+      background: rgba(0,0,0,0.6);
+      backdrop-filter: blur(8px);
+      padding: 8px;
+      margin: 0 16px;
+      border-radius: 40px;
+      color: #ffcf9a;
+      font-size: 14px;
     }
-    .badge {
+    .led {
       display: inline-block;
-      background: rgba(0, 0, 0, 0.75);
-      backdrop-filter: blur(10px);
-      padding: 10px 20px;
-      border-radius: 60px;
-      color: #ffdfb3;
-      font-size: 0.9rem;
-      letter-spacing: 0.5px;
-      border: 1px solid rgba(255, 180, 70, 0.6);
-      box-shadow: 0 0 18px rgba(255, 80, 20, 0.4);
-    }
-    .badge span {
-      color: #ffb347;
-      font-weight: bold;
-    }
-    .status-led {
-      display: inline-block;
-      width: 10px;
-      height: 10px;
-      border-radius: 10px;
-      background-color: #ff884d;
-      box-shadow: 0 0 8px #ffaa55;
-      margin-right: 8px;
-      animation: pulse 1.2s infinite;
+      width: 8px;
+      height: 8px;
+      border-radius: 8px;
+      background: #ff884d;
+      box-shadow: 0 0 6px #ffaa55;
+      margin-right: 6px;
+      animation: pulse 1s infinite;
     }
     @keyframes pulse {
       0% { opacity: 0.5; transform: scale(1);}
       100% { opacity: 1; transform: scale(1.2);}
     }
-    .watermark {
-      position: fixed;
-      bottom: 12px;
-      right: 16px;
-      color: rgba(255,220,150,0.6);
-      font-size: 11px;
-      font-family: monospace;
-      background: rgba(0,0,0,0.4);
-      padding: 4px 12px;
-      border-radius: 40px;
-      backdrop-filter: blur(4px);
-      pointer-events: none;
-      z-index: 20;
-    }
     @media (max-width: 600px) {
-      .badge { font-size: 0.7rem; padding: 6px 14px; }
+      .info { font-size: 11px; bottom: 12px; }
     }
   </style>
 </head>
 <body>
-<div class="canvas-container">
-  <canvas id="canvasBackground"></canvas>
-  <canvas id="canvasOutput"></canvas>
-</div>
-<div class="info-panel">
-  <div class="badge">
-    <span class="status-led"></span>
-    🧬 РЕАЛЬНЕ ВИТЯГУВАННЯ (WARP) | HOMOGRAFIA 🧬
-    <span style="margin:0 6px">⚡</span> ДВІ РУКИ → ПАЛЕЦЬ ТЯГНЕТЬСЯ
+  <canvas id="canvas"></canvas>
+  <div class="info">
+    <span class="led"></span> ГУМОВИЙ ВИТЯГ · реальне розтягування пікселів (warp) 
+    <span style="margin:0 6px">⚡</span> дві руки → палець тягнеться
   </div>
-</div>
-<div class="watermark">⚡ справжнє спотворення пікселів (image warping) ⚡</div>
 
-<script>
-  (function(){
-    // --- Отримуємо canvas ---
-    const canvasBg = document.getElementById('canvasBackground');
-    const canvasOut = document.getElementById('canvasOutput');
-    const ctxBg = canvasBg.getContext('2d');
-    const ctxOut = canvasOut.getContext('2d');
-
-    // --- Налаштування відео ---
-    const videoElement = document.createElement('video');
-    videoElement.setAttribute('autoplay', '');
-    videoElement.setAttribute('playsinline', '');
-    videoElement.style.display = 'none';
-    document.body.appendChild(videoElement);
-
-    // --- MediaPipe Hands ---
-    const hands = new Hands({
-      locateFile: (file) => `https://cdn.jsdelivr.net/npm/@mediapipe/hands/${file}`
-    });
-    hands.setOptions({
-      maxNumHands: 2,
-      modelComplexity: 1,
-      minDetectionConfidence: 0.65,
-      minTrackingConfidence: 0.7
-    });
-
-    // Індекси MediaPipe: великий, вказівний, середній, безіменний, мізинець
-    const FINGER_TIPS = [4, 8, 12, 16, 20];
-    // Бази пальців (суглоби біля долоні) для кращого витягування: вказівний, середній
-    const BASE_INDICES = [5, 9];
-    // Додамо повний список пар (база, кінчик), щоб охопити всі пальці але для плавності залишимо основні два
-    // але для видовищності додамо також безіменний і мізинець? Вони менш виразні, але можна.
-    // Обираю вказівний + середній – найпомітніші.
-    const ACTIVE_FINGERS = [
-      { base: 5, tip: 8, name: 'index' },
-      { base: 9, tip: 12, name: 'middle' }
-    ];
-
-    // Розміри зображення
-    let imageWidth = 0, imageHeight = 0;
-
-    // Функція для warp (спотворення) фрагмента зображення
-    // Використовує Homography.js для перспективного перетворення прямокутної області пальця
-    // srcQuad – координати джерела (нормалізовані або абсолютні), dstQuad – координати призначення.
-    // Ми будемо передавати координати в пікселях (x, y)
-    async function warpFingerRegion(sourceCanvas, srcQuad, dstQuad, outputCtx, dstX, dstY, dstW, dstH) {
-      if (!sourceCanvas || srcQuad.length !== 4 || dstQuad.length !== 4) return;
-      try {
-        // Використовуємо Homography.js: створюємо екземпляр
-        const homography = new homography.Homography();
-        // Виконуємо перспективне перетворення (проєктивне) – найкраще для витягування
-        const warpedImage = await homography.warp({
-          image: sourceCanvas,
-          srcPoints: srcQuad,   // масив з 4 точок [{x, y}]
-          dstPoints: dstQuad,   // куди трансформувати
-          type: 'projective',   // проєктивне спотворення -> гума
-          precision: 1
-        });
-        // малюємо спотворене зображення на вихідний canvas (ctxOut) у вказаній позиції
-        if (warpedImage) {
-          outputCtx.drawImage(warpedImage, dstX, dstY, dstW, dstH);
-        }
-      } catch(e) {
-        console.warn("warp error", e);
-      }
-    }
-
-    // --- Функція для отримання області навколо пальця (чотирикутник) ---
-    // Отримує точку основи та кінчика, повертає 4 точки (кути) прямокутника, орієнтованого вздовж пальця
-    function getFingerQuad(baseX, baseY, tipX, tipY, widthFactor = 0.08, lengthExtension = 1.0) {
-      // вектор напрямку від основи до кінчика
-      let dx = tipX - baseX;
-      let dy = tipY - baseY;
-      const len = Math.hypot(dx, dy);
-      if (len < 0.001) return null;
-      dx /= len;
-      dy /= len;
-      // перпендикулярний вектор
-      const perpX = -dy;
-      const perpY = dx;
+  <script>
+    (function(){
+      const canvas = document.getElementById('canvas');
+      const ctx = canvas.getContext('2d');
       
-      // Ширина області пропорційна довжині пальця (але фіксована основа)
-      const baseWidth = (Math.min(0.12, widthFactor * 1.2)) * (imageWidth || 640);
-      const tipWidth = (Math.min(0.08, widthFactor * 0.8)) * (imageWidth || 640);
+      // ---- налаштування камери ----
+      const video = document.createElement('video');
+      video.setAttribute('autoplay', '');
+      video.setAttribute('playsinline', '');
+      video.style.display = 'none';
+      document.body.appendChild(video);
       
-      // точки: основа (дві сторони)
-      const p1 = { x: baseX + perpX * baseWidth, y: baseY + perpY * baseWidth };
-      const p2 = { x: baseX - perpX * baseWidth, y: baseY - perpY * baseWidth };
-      // точки кінчика
-      const p3 = { x: tipX - perpX * tipWidth, y: tipY - perpY * tipWidth };
-      const p4 = { x: tipX + perpX * tipWidth, y: tipY + perpY * tipWidth };
+      // ---- MediaPipe Hands (легкі налаштування) ----
+      const hands = new Hands({
+        locateFile: (file) => `https://cdn.jsdelivr.net/npm/@mediapipe/hands/${file}`
+      });
+      hands.setOptions({
+        maxNumHands: 2,
+        modelComplexity: 0,        // швидший, але менш точний – для мобільних
+        minDetectionConfidence: 0.7,
+        minTrackingConfidence: 0.7
+      });
       
-      return [p1, p2, p3, p4];
-    }
-
-    // Основний процес: копіюємо кадр, визначаємо дві руки, видовжуємо пальці
-    async function processFrame() {
-      if (!videoElement.videoWidth || !videoElement.videoHeight) {
-        requestAnimationFrame(processFrame);
-        return;
-      }
+      // пальці для warp: вказівний (8) та середній (12)
+      const FINGERS = [
+        { tip: 8, base: 5 },   // вказівний
+        { tip: 12, base: 9 }   // середній
+      ];
       
-      // Оновлюємо розміри canvas
-      const w = videoElement.videoWidth;
-      const h = videoElement.videoHeight;
-      if (imageWidth !== w || imageHeight !== h) {
-        imageWidth = w;
-        imageHeight = h;
-        canvasBg.width = w;
-        canvasBg.height = h;
-        canvasOut.width = w;
-        canvasOut.height = h;
-      }
+      let frameWidth = 0, frameHeight = 0;
+      let lastTimestamp = 0;
+      let frameSkipped = false; // для плавності на мобільних
       
-      // Малюємо оригінальний кадр на фоновий canvas (без warp)
-      ctxBg.drawImage(videoElement, 0, 0, w, h);
-      
-      // Отримуємо landmarks
-      const results = await hands.send({ image: videoElement });
-      const landmarksList = results.multiHandLandmarks;
-      const handCount = landmarksList ? landmarksList.length : 0;
-      
-      // Спочатку копіюємо фон на вихідний canvas (чистий стан)
-      ctxOut.clearRect(0, 0, w, h);
-      ctxOut.drawImage(canvasBg, 0, 0, w, h);
-      
-      // Якщо дві руки — робимо warp
-      if (handCount === 2) {
-        const hand1 = landmarksList[0];
-        const hand2 = landmarksList[1];
+      // ---- функція швидкого warp (розтяг текстури) ----
+      // малюємо ділянку зображення (від базової точки до оригінального кінчика)
+      // і витягуємо її до нової позиції (цільовий кінчик)
+      function stretchFingerTexture(srcCanvas, baseX, baseY, origTipX, origTipY, targetTipX, targetTipY, widthPx) {
+        // Обчислюємо вектор і довжини
+        const dxOrig = origTipX - baseX;
+        const dyOrig = origTipY - baseY;
+        const origLen = Math.hypot(dxOrig, dyOrig);
+        if (origLen < 5) return false;
         
-        // Для кожного пальця (base, tip) робимо видовження від руки1 до руки2
-        for (let finger of ACTIVE_FINGERS) {
-          // Отримуємо базову точку пальця на першій руці та кінчик на другій руці
-          const basePoint = hand1[finger.base];
-          const tipSelf = hand1[finger.tip];
-          const targetTip = hand2[finger.tip];
-          if (!basePoint || !tipSelf || !targetTip) continue;
-          
-          // перетворюємо нормалізовані координати (0-1) у пікселі
-          const baseX = basePoint.x * w;
-          const baseY = basePoint.y * h;
-          const origTipX = tipSelf.x * w;
-          const origTipY = tipSelf.y * h;
-          const targetX = targetTip.x * w;
-          const targetY = targetTip.y * h;
-          
-          // Відстань між кінчиками: якщо занадто далеко, warp ефект все одно гарний
-          // Отримуємо чотирикутник джерела (ділянку навколо пальця від основи до кінчика)
-          const srcQuad = getFingerQuad(baseX, baseY, origTipX, origTipY, 0.09, 1.0);
-          if (!srcQuad) continue;
-          
-          // Цільовий чотирикутник: та сама основа, але кінчик витягується до targetTip
-          // Злегка розширимо кінчик для плавності
-          const dstQuad = getFingerQuad(baseX, baseY, targetX, targetY, 0.09, 1.0);
-          if (!dstQuad) continue;
-          
-          // Форматуємо точки для Homography.js (масив {x, y})
-          const srcPoints = srcQuad.map(p => ({ x: p.x, y: p.y }));
-          const dstPoints = dstQuad.map(p => ({ x: p.x, y: p.y }));
-          
-          // Вирізаємо зображення області з canvasBg (оригінальне відео)
-          // Краще взяти мінімальний bounding box навколо srcQuad
-          let minX = Math.min(...srcQuad.map(p => p.x));
-          let minY = Math.min(...srcQuad.map(p => p.y));
-          let maxX = Math.max(...srcQuad.map(p => p.x));
-          let maxY = Math.max(...srcQuad.map(p => p.y));
-          minX = Math.max(0, minX - 15);
-          minY = Math.max(0, minY - 15);
-          maxX = Math.min(w, maxX + 15);
-          maxY = Math.min(h, maxY + 15);
-          const regionWidth = maxX - minX;
-          const regionHeight = maxY - minY;
-          if (regionWidth < 10 || regionHeight < 10) continue;
-          
-          // Тимчасовий canvas для виділеної ділянки
-          const tempCanvas = document.createElement('canvas');
-          tempCanvas.width = regionWidth;
-          tempCanvas.height = regionHeight;
-          const tempCtx = tempCanvas.getContext('2d');
-          tempCtx.drawImage(canvasBg, minX, minY, regionWidth, regionHeight, 0, 0, regionWidth, regionHeight);
-          
-          // Коригуємо srcPoints і dstPoints відносно виділеної ділянки
-          const srcPointsAdj = srcPoints.map(p => ({ x: p.x - minX, y: p.y - minY }));
-          const dstPointsAdj = dstPoints.map(p => ({ x: p.x - minX, y: p.y - minY }));
-          
-          // Застосовуємо warp до виділеної ділянки
-          try {
-            const homography = new homography.Homography();
-            const warpedImg = await homography.warp({
-              image: tempCanvas,
-              srcPoints: srcPointsAdj,
-              dstPoints: dstPointsAdj,
-              type: 'projective',
-              precision: 0.5
-            });
-            if (warpedImg) {
-              // Малюємо спотворене зображення поверх вихідного canvas у правильній позиції
-              ctxOut.drawImage(warpedImg, minX, minY, regionWidth, regionHeight);
-            } else {
-              // fallback: просто малюємо оригінальну ділянку
-              ctxOut.drawImage(tempCanvas, minX, minY);
-            }
-          } catch(e) {
-            console.debug("warp error", e);
-            ctxOut.drawImage(tempCanvas, minX, minY);
-          }
-          
-          // ДОДАТКОВИЙ ЕФЕКТ: також видовжуємо палець із другої руки до першої (симетрично)
-          const basePoint2 = hand2[finger.base];
-          const tipSelf2 = hand2[finger.tip];
-          const targetTip2 = hand1[finger.tip];
-          if (basePoint2 && tipSelf2 && targetTip2) {
-            const baseX2 = basePoint2.x * w;
-            const baseY2 = basePoint2.y * h;
-            const origTipX2 = tipSelf2.x * w;
-            const origTipY2 = tipSelf2.y * h;
-            const targetX2 = targetTip2.x * w;
-            const targetY2 = targetTip2.y * h;
-            
-            const srcQuad2 = getFingerQuad(baseX2, baseY2, origTipX2, origTipY2, 0.09, 1.0);
-            if (srcQuad2) {
-              const dstQuad2 = getFingerQuad(baseX2, baseY2, targetX2, targetY2, 0.09, 1.0);
-              if (dstQuad2) {
-                let minX2 = Math.min(...srcQuad2.map(p => p.x));
-                let minY2 = Math.min(...srcQuad2.map(p => p.y));
-                let maxX2 = Math.max(...srcQuad2.map(p => p.x));
-                let maxY2 = Math.max(...srcQuad2.map(p => p.y));
-                minX2 = Math.max(0, minX2 - 15);
-                minY2 = Math.max(0, minY2 - 15);
-                maxX2 = Math.min(w, maxX2 + 15);
-                maxY2 = Math.min(h, maxY2 + 15);
-                const rw = maxX2 - minX2;
-                const rh = maxY2 - minY2;
-                if (rw > 10 && rh > 10) {
-                  const tempCanvas2 = document.createElement('canvas');
-                  tempCanvas2.width = rw;
-                  tempCanvas2.height = rh;
-                  const tempCtx2 = tempCanvas2.getContext('2d');
-                  tempCtx2.drawImage(canvasBg, minX2, minY2, rw, rh, 0, 0, rw, rh);
-                  const srcP2 = srcQuad2.map(p => ({ x: p.x - minX2, y: p.y - minY2 }));
-                  const dstP2 = dstQuad2.map(p => ({ x: p.x - minX2, y: p.y - minY2 }));
-                  const hom2 = new homography.Homography();
-                  const warped2 = await hom2.warp({
-                    image: tempCanvas2,
-                    srcPoints: srcP2,
-                    dstPoints: dstP2,
-                    type: 'projective'
-                  });
-                  if (warped2) {
-                    ctxOut.drawImage(warped2, minX2, minY2, rw, rh);
-                  } else {
-                    ctxOut.drawImage(tempCanvas2, minX2, minY2);
-                  }
-                }
-              }
-            }
-          }
+        const dxTarget = targetTipX - baseX;
+        const dyTarget = targetTipY - baseY;
+        const targetLen = Math.hypot(dxTarget, dyTarget);
+        if (targetLen < 5) return false;
+        
+        // кут повороту
+        const angleOrig = Math.atan2(dyOrig, dxOrig);
+        const angleTarget = Math.atan2(dyTarget, dxTarget);
+        const angleDiff = angleTarget - angleOrig;
+        
+        // Будуємо тимчасовий canvas для ділянки пальця
+        const side = widthPx; // ширина області
+        // Вирізаємо квадрат навколо пальця (орієнтований вздовж dxOrig)
+        const centerX = baseX + dxOrig * 0.5;
+        const centerY = baseY + dyOrig * 0.5;
+        
+        // Знаходимо bounding box для вирізання з урахуванням кута
+        const cos = Math.cos(-angleOrig);
+        const sin = Math.sin(-angleOrig);
+        // точки чотирикутника в локальній системі
+        const halfW = side / 2;
+        const halfH = origLen / 2;
+        const corners = [
+          {x: -halfW, y: -halfH}, {x: halfW, y: -halfH},
+          {x: halfW, y: halfH}, {x: -halfW, y: halfH}
+        ];
+        // повертаємо і зміщуємо
+        let minX = Infinity, minY = Infinity, maxX = -Infinity, maxY = -Infinity;
+        for (let p of corners) {
+          const rx = p.x * cos - p.y * sin + centerX;
+          const ry = p.x * sin + p.y * cos + centerY;
+          minX = Math.min(minX, rx);
+          minY = Math.min(minY, ry);
+          maxX = Math.max(maxX, rx);
+          maxY = Math.max(maxY, ry);
+        }
+        minX = Math.max(0, Math.floor(minX - 2));
+        minY = Math.max(0, Math.floor(minY - 2));
+        maxX = Math.min(frameWidth, Math.ceil(maxX + 2));
+        maxY = Math.min(frameHeight, Math.ceil(maxY + 2));
+        const w = maxX - minX;
+        const h = maxY - minY;
+        if (w < 8 || h < 8) return false;
+        
+        // Тимчасовий canvas для вирізаної текстури
+        const tempCanvas = document.createElement('canvas');
+        tempCanvas.width = w;
+        tempCanvas.height = h;
+        const tempCtx = tempCanvas.getContext('2d');
+        tempCtx.drawImage(srcCanvas, minX, minY, w, h, 0, 0, w, h);
+        
+        // Тепер створюємо вихідну текстуру, яку розтягнемо
+        // Ми хочемо розтягнути вздовж осі Y (від оригінальної довжини до targetLen)
+        // Використаємо Canvas з масштабуванням
+        const stretchedCanvas = document.createElement('canvas');
+        const stretchFactor = targetLen / origLen;
+        // Нова ширина залишається side, висота = origLen * stretchFactor
+        const newHeight = Math.max(8, origLen * stretchFactor);
+        stretchedCanvas.width = side;
+        stretchedCanvas.height = newHeight;
+        const stretchCtx = stretchedCanvas.getContext('2d');
+        
+        // Малюємо текстуру з масштабуванням по Y
+        // Спочатку потрібно отримати зображення пальця з tempCanvas в орієнтованому вигляді
+        const orientedCanvas = document.createElement('canvas');
+        orientedCanvas.width = side;
+        orientedCanvas.height = origLen;
+        const oriCtx = orientedCanvas.getContext('2d');
+        oriCtx.save();
+        oriCtx.translate(side/2, origLen/2);
+        oriCtx.rotate(angleOrig);
+        oriCtx.drawImage(tempCanvas, -w/2, -h/2, w, h);
+        oriCtx.restore();
+        
+        // Масштабуємо по Y
+        stretchCtx.drawImage(orientedCanvas, 0, 0, side, origLen, 0, 0, side, newHeight);
+        
+        // Тепер вставляємо розтягнутий палець у вихідний canvas у правильному місці (від base до targetTip)
+        // Обчислимо новий центр для вставки
+        const newCenterX = baseX + dxTarget * 0.5;
+        const newCenterY = baseY + dyTarget * 0.5;
+        const finalAngle = angleTarget;
+        
+        ctx.save();
+        ctx.translate(newCenterX, newCenterY);
+        ctx.rotate(finalAngle);
+        ctx.drawImage(stretchedCanvas, -side/2, -newHeight/2, side, newHeight);
+        ctx.restore();
+        
+        // Маленьке затемнення на кінчику, щоб сховати стик
+        ctx.beginPath();
+        ctx.arc(targetTipX, targetTipY, side*0.25, 0, 2*Math.PI);
+        ctx.fillStyle = 'rgba(0,0,0,0.2)';
+        ctx.fill();
+        
+        return true;
+      }
+      
+      // ---- Основний цикл обробки ----
+      let processing = false;
+      
+      async function processFrame() {
+        if (!video.videoWidth || !video.videoHeight) {
+          requestAnimationFrame(processFrame);
+          return;
         }
         
-        // Додатковий ефект: видовження великого пальця для ще більшої "гума-гума но мі"
+        const w = video.videoWidth;
+        const h = video.videoHeight;
+        if (frameWidth !== w || frameHeight !== h) {
+          frameWidth = w;
+          frameHeight = h;
+          canvas.width = w;
+          canvas.height = h;
+        }
+        
+        // Отримуємо landmarks (асинхронно, але не блокуємо)
+        let landmarksResult;
         try {
-          const thumbTip1 = hand1[4];
-          const thumbTip2 = hand2[4];
-          const thumbBase1 = hand1[2];
-          const thumbBase2 = hand2[2];
-          if (thumbTip1 && thumbTip2 && thumbBase1 && thumbBase2) {
-            const tx1 = thumbTip1.x * w, ty1 = thumbTip1.y * h;
-            const tx2 = thumbTip2.x * w, ty2 = thumbTip2.y * h;
-            const bx1 = thumbBase1.x * w, by1 = thumbBase1.y * h;
-            const srcThumbQuad = getFingerQuad(bx1, by1, tx1, ty1, 0.07);
-            if (srcThumbQuad) {
-              const dstThumbQuad = getFingerQuad(bx1, by1, tx2, ty2, 0.07);
-              if (dstThumbQuad) {
-                let minX = Math.min(...srcThumbQuad.map(p => p.x));
-                let minY = Math.min(...srcThumbQuad.map(p => p.y));
-                let maxX = Math.max(...srcThumbQuad.map(p => p.x));
-                let maxY = Math.max(...srcThumbQuad.map(p => p.y));
-                minX = Math.max(0, minX-12);
-                minY = Math.max(0, minY-12);
-                maxX = Math.min(w, maxX+12);
-                maxY = Math.min(h, maxY+12);
-                const rw = maxX-minX, rh = maxY-minY;
-                if(rw>8 && rh>8){
-                  const tCanvas = document.createElement('canvas');
-                  tCanvas.width = rw; tCanvas.height = rh;
-                  tCanvas.getContext('2d').drawImage(canvasBg, minX, minY, rw, rh, 0, 0, rw, rh);
-                  const srcP = srcThumbQuad.map(p=>({x:p.x-minX, y:p.y-minY}));
-                  const dstP = dstThumbQuad.map(p=>({x:p.x-minX, y:p.y-minY}));
-                  const hg = new homography.Homography();
-                  const warpedThumb = await hg.warp({ image: tCanvas, srcPoints: srcP, dstPoints: dstP, type:'projective' });
-                  if(warpedThumb) ctxOut.drawImage(warpedThumb, minX, minY, rw, rh);
-                }
+          landmarksResult = await hands.send({ image: video });
+        } catch(e) {
+          requestAnimationFrame(processFrame);
+          return;
+        }
+        
+        const handList = landmarksResult.multiHandLandmarks;
+        const handsCount = handList ? handList.length : 0;
+        
+        // Малюємо оригінальний кадр
+        ctx.drawImage(video, 0, 0, w, h);
+        
+        if (handsCount === 2) {
+          const handA = handList[0];
+          const handB = handList[1];
+          
+          // Для кожного пальця робимо warp з A до B і з B до A
+          for (let f of FINGERS) {
+            const baseA = handA[f.base];
+            const tipA = handA[f.tip];
+            const tipB = handB[f.tip];
+            if (baseA && tipA && tipB) {
+              const baseX = baseA.x * w;
+              const baseY = baseA.y * h;
+              const origX = tipA.x * w;
+              const origY = tipA.y * h;
+              const targetX = tipB.x * w;
+              const targetY = tipB.y * h;
+              const dist = Math.hypot(targetX - origX, targetY - origY);
+              if (dist < 200) { // тільки якщо досить близько, щоб не тягнути надто далеко
+                const widthPx = Math.min(45, Math.max(25, 30));
+                stretchFingerTexture(canvas, baseX, baseY, origX, origY, targetX, targetY, widthPx);
+              }
+            }
+            
+            // Зворотний warp (з B до A)
+            const baseB = handB[f.base];
+            const tipB = handB[f.tip];
+            const tipA = handA[f.tip];
+            if (baseB && tipB && tipA) {
+              const baseX = baseB.x * w;
+              const baseY = baseB.y * h;
+              const origX = tipB.x * w;
+              const origY = tipB.y * h;
+              const targetX = tipA.x * w;
+              const targetY = tipA.y * h;
+              const dist = Math.hypot(targetX - origX, targetY - origY);
+              if (dist < 200) {
+                const widthPx = Math.min(45, Math.max(25, 30));
+                stretchFingerTexture(canvas, baseX, baseY, origX, origY, targetX, targetY, widthPx);
               }
             }
           }
-        } catch(e) { console.warn(e); }
+          
+          // Додатково великий палець для ефекту
+          const thumbA = handA[4];
+          const thumbB = handB[4];
+          const thumbBaseA = handA[2];
+          const thumbBaseB = handB[2];
+          if (thumbA && thumbB && thumbBaseA && thumbBaseB) {
+            const baseX = thumbBaseA.x * w, baseY = thumbBaseA.y * h;
+            const origX = thumbA.x * w, origY = thumbA.y * h;
+            const targetX = thumbB.x * w, targetY = thumbB.y * h;
+            stretchFingerTexture(canvas, baseX, baseY, origX, origY, targetX, targetY, 32);
+            
+            const baseX2 = thumbBaseB.x * w, baseY2 = thumbBaseB.y * h;
+            const origX2 = thumbB.x * w, origY2 = thumbB.y * h;
+            const targetX2 = thumbA.x * w, targetY2 = thumbA.y * h;
+            stretchFingerTexture(canvas, baseX2, baseY2, origX2, origY2, targetX2, targetY2, 32);
+          }
+        }
+        
+        // Підказки
+        ctx.font = `${Math.max(14, Math.floor(w/40))}px monospace`;
+        ctx.shadowBlur = 4;
+        ctx.fillStyle = '#fff0c0';
+        ctx.shadowColor = 'black';
+        if (handsCount < 2) {
+          ctx.fillText("✋ + ✋  покажи дві руки → палець видовжується", w/2-150, h-25);
+        } else {
+          ctx.fillText("⚡ гума працює (розтяг пікселів) ⚡", w/2-130, h-20);
+        }
+        ctx.shadowBlur = 0;
+        
+        requestAnimationFrame(processFrame);
       }
       
-      // Малюємо підказки
-      ctxOut.font = `bold ${Math.max(18, Math.floor(w / 28))}px 'Segoe UI', monospace`;
-      ctxOut.shadowBlur = 6;
-      ctxOut.fillStyle = '#fff0d0';
-      ctxOut.shadowColor = 'rgba(0,0,0,0.6)';
-      if (handCount < 2) {
-        ctxOut.fillText("✋ + ✋  покажи дві руки → реальне витягування пікселів", w * 0.5 - 240, h - 40);
-        ctxOut.font = `${Math.max(14, Math.floor(w / 38))}px monospace`;
-        ctxOut.fillStyle = '#f7c48b';
-        ctxOut.fillText("image warping (справжня деформація)", w * 0.5 - 170, h - 18);
-      } else {
-        ctxOut.font = `${Math.max(15, Math.floor(w / 42))}px monospace`;
-        ctxOut.fillStyle = '#ffe5bc';
-        ctxOut.fillText("⚡ ГОМОГРАФІЯ АКТИВОВАНА: ПАЛЬЦІ ТЯГНУТЬСЯ ⚡", w * 0.5 - 210, h - 20);
+      // ---- Запуск камери ----
+      let camera = null;
+      function initCamera() {
+        if (camera) camera.stop();
+        camera = new Camera(video, {
+          onFrame: async () => {},
+          width: 640,   // зменшена роздільна здатність для мобільних
+          height: 480,
+          facingMode: "user"
+        });
+        camera.start().then(() => {
+          console.log("Camera ready");
+          processFrame();
+        }).catch(err => {
+          console.error(err);
+          ctx.fillStyle = "#1a1a2e";
+          ctx.fillRect(0, 0, canvas.width, canvas.height);
+          ctx.fillStyle = "#ffb366";
+          ctx.font = "16px monospace";
+          ctx.fillText("⚠️ Дозвольте доступ до камери", 50, 200);
+        });
       }
-      ctxOut.shadowBlur = 0;
       
-      requestAnimationFrame(processFrame);
-    }
-    
-    // Ініціалізація камери та запуск
-    let camera = null;
-    function startCamera() {
-      if (camera) camera.stop();
-      camera = new Camera(videoElement, {
-        onFrame: async () => {},
-        width: 1280,
-        height: 720,
-        facingMode: "user"
-      });
-      camera.start().then(() => {
-        console.log("Camera started");
-        processFrame();
-      }).catch(err => {
-        console.error("Camera error:", err);
-        ctxOut.fillStyle = "#1a1a2e";
-        ctxOut.fillRect(0, 0, canvasOut.width, canvasOut.height);
-        ctxOut.fillStyle = "#ffb366";
-        ctxOut.font = "18px monospace";
-        ctxOut.fillText("⚠️ Дозвольте доступ до камери та перезавантажте сторінку", 80, 200);
-      });
-    }
-    
-    startCamera();
-    videoElement.addEventListener('error', () => setTimeout(startCamera, 1000));
-  })();
-</script>
+      initCamera();
+    })();
+  </script>
 </body>
 </html>

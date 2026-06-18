@@ -1,83 +1,87 @@
 <!DOCTYPE html>
-<html>
+<html lang="uk">
 <head>
-    <style>body { margin: 0; overflow: hidden; background: black; }</style>
+    <meta charset="UTF-8">
+    <title>Three.js + MediaPipe</title>
+    <style>
+        body { margin: 0; overflow: hidden; background: #000; }
+        #webcam { position: absolute; top: 0; left: 0; width: 100px; height: 100px; opacity: 0; pointer-events: none; }
+    </style>
 </head>
 <body>
-    <video id="webcam" style="display:none;"></video>
+    <video id="webcam" playsinline></video>
 
     <script type="module">
         import * as THREE from 'https://cdn.skypack.dev/three@0.136.0';
-        import { Hands } from 'https://cdn.skypack.dev/@mediapipe/hands';
-        import { Camera } from 'https://cdn.skypack.dev/@mediapipe/camera_utils';
+        import { Hands } from 'https://cdn.skypack.dev/@mediapipe/hands@0.10.1623240213';
+        import { Camera } from 'https://cdn.skypack.dev/@mediapipe/camera_utils@0.3.1640029074';
 
-        // 1. Сцена Three.js
+        // 1. Налаштування сцени
         const scene = new THREE.Scene();
         const camera = new THREE.PerspectiveCamera(75, window.innerWidth/window.innerHeight, 0.1, 1000);
-        const renderer = new THREE.WebGLRenderer();
+        const renderer = new THREE.WebGLRenderer({ antialias: true });
         renderer.setSize(window.innerWidth, window.innerHeight);
         document.body.appendChild(renderer.domElement);
-        camera.position.z = 5;
+        camera.position.z = 3;
 
         // Створення частинок
-        const particles = 2000;
+        const count = 1000;
         const geometry = new THREE.BufferGeometry();
-        const positions = new Float32Array(particles * 3);
-        for(let i=0; i<particles*3; i++) positions[i] = (Math.random() - 0.5) * 10;
-        geometry.setAttribute('position', new THREE.BufferAttribute(positions, 3));
+        const pos = new Float32Array(count * 3);
+        const col = new Float32Array(count * 3).fill(1);
+        for(let i=0; i<count*3; i++) pos[i] = (Math.random() - 0.5) * 5;
         
-        // Ініціалізація кольорів
-        const colors = new Float32Array(particles * 3);
-        colors.fill(1);
-        geometry.setAttribute('color', new THREE.BufferAttribute(colors, 3));
-
-        const material = new THREE.PointsMaterial({ size: 0.05, vertexColors: true });
+        geometry.setAttribute('position', new THREE.BufferAttribute(pos, 3));
+        geometry.setAttribute('color', new THREE.BufferAttribute(col, 3));
+        const material = new THREE.PointsMaterial({ size: 0.04, vertexColors: true });
         const points = new THREE.Points(geometry, material);
         scene.add(points);
 
-        // 2. Логіка зміни кольорів
-        function updateParticles(type) {
-            const colorAttr = geometry.attributes.color;
-            for(let i=0; i<particles; i++) {
-                if(type === 'flag') {
-                    colorAttr.array[i*3] = i < particles/2 ? 0 : 1;     // R
-                    colorAttr.array[i*3+1] = i < particles/2 ? 0 : 1;   // G
-                    colorAttr.array[i*3+2] = 1;                         // B
-                } else {
-                    colorAttr.array[i*3] = colorAttr.array[i*3+1] = colorAttr.array[i*3+2] = 0.8;
-                }
-            }
-            colorAttr.needsUpdate = true;
-        }
-
-        // 3. MediaPipe Hands
-        const hands = new Hands({locateFile: (file) => `https://cdn.jsdelivr.net/npm/@mediapipe/hands/${file}`});
-        hands.setOptions({ maxNumHands: 1, modelComplexity: 1, minDetectionConfidence: 0.5 });
-        
-        hands.onResults(results => {
-            if (results.multiHandLandmarks.length > 0) {
-                const landmarks = results.multiHandLandmarks[0];
-                // Якщо кінчик вказівного пальця (8) нижче суглоба (6) - це "стиснутий кулак"
-                const isFist = landmarks[8].y > landmarks[6].y;
-                updateParticles(isFist ? 'text' : 'flag');
-            }
+        // 2. Логіка MediaPipe
+        const videoElement = document.getElementById('webcam');
+        const hands = new Hands({
+            locateFile: (file) => `https://cdn.jsdelivr.net/npm/@mediapipe/hands@0.10.1623240213/${file}`
         });
 
-        // Запуск камери
-        const videoElement = document.getElementById('webcam');
-        const cameraSource = new Camera(videoElement, {
+        hands.setOptions({
+            maxNumHands: 1,
+            modelComplexity: 1,
+            minDetectionConfidence: 0.5,
+            minTrackingConfidence: 0.5
+        });
+
+        hands.onResults((results) => {
+            const colors = geometry.attributes.color.array;
+            const isFist = results.multiHandLandmarks.length > 0 && 
+                          results.multiHandLandmarks[0][8].y > results.multiHandLandmarks[0][6].y;
+
+            for(let i=0; i<count; i++) {
+                const c = isFist ? 0.3 : 1;
+                colors[i*3] = c; colors[i*3+1] = c; colors[i*3+2] = c;
+            }
+            geometry.attributes.color.needsUpdate = true;
+        });
+
+        // 3. Запуск камери
+        const cameraObj = new Camera(videoElement, {
             onFrame: async () => { await hands.send({image: videoElement}); },
             width: 640, height: 480
         });
-        cameraSource.start();
+        cameraObj.start().catch(err => alert("Помилка камери: " + err));
 
-        // Рендеринг
+        // 4. Анімація
         function animate() {
             requestAnimationFrame(animate);
-            points.rotation.y += 0.005;
+            points.rotation.y += 0.01;
             renderer.render(scene, camera);
         }
         animate();
+
+        window.addEventListener('resize', () => {
+            camera.aspect = window.innerWidth / window.innerHeight;
+            camera.updateProjectionMatrix();
+            renderer.setSize(window.innerWidth, window.innerHeight);
+        });
     </script>
 </body>
 </html>

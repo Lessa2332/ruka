@@ -1,132 +1,553 @@
 <!DOCTYPE html>
 <html lang="uk">
 <head>
-    <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
-    <title>Голосова магія</title>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover" />
+    <title>Українська Магія ✦ 2027</title>
+
+    <!-- ===== 2027‑style CSS ===== -->
     <style>
-        body { margin: 0; background: #02050a; overflow: hidden; font-family: 'Segoe UI', sans-serif; }
-        canvas { display: block; touch-action: none; }
-        .ui { position: absolute; bottom: 40px; left: 50%; transform: translateX(-50%); z-index: 100; text-align: center; }
-        #btn {
-            background: rgba(255, 255, 255, 0.1); backdrop-filter: blur(20px);
-            border: 2px solid rgba(255, 255, 255, 0.3); color: #fff;
-            padding: 20px 40px; border-radius: 50px; cursor: pointer;
-            font-size: 18px; transition: 0.3s;
+        /* ----- reset & base ----- */
+        *,
+        *::before,
+        *::after {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
         }
-        /* Ефект пульсації для інклюзії (показує стан готовності) */
-        .listening { border-color: #FFD700 !important; box-shadow: 0 0 20px #FFD700; transform: scale(1.05); }
-    </style>
-</head>
-<body>
 
-<div class="ui"><button id="btn">Натисни та скажи слово</button></div>
-<canvas id="c"></canvas>
-
-<script>
-    const canvas = document.getElementById('c');
-    const ctx = canvas.getContext('2d');
-    let particles = [], width, height, targets = [];
-    let isListening = false;
-
-    class Particle {
-        constructor() { this.reset(); }
-        reset() {
-            this.x = Math.random() * width;
-            this.y = Math.random() * height;
+        :root {
+            --bg-primary: #02050a;
+            --glass-bg: rgba(255, 255, 255, 0.04);
+            --glass-border: rgba(255, 255, 255, 0.10);
+            --text-primary: #f0f4ff;
+            --accent-blue: #4A90E2;
+            --accent-gold: #FFD700;
+            --font-sans: 'SF Pro Display', -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, system-ui, sans-serif;
+            --radius-pill: 9999px;
+            --shadow-glow: 0 8px 32px rgba(74, 144, 226, 0.15);
+            --transition-smooth: 0.35s cubic-bezier(0.22, 1, 0.36, 1);
         }
-        update(target) {
-            if (target) {
-                this.x += (target.x - this.x) * 0.08;
-                this.y += (target.y - this.y) * 0.08;
-                this.color = target.color;
-            } else {
-                // Космічний хаос
-                this.x += (Math.random() - 0.5) * 2;
-                this.y += (Math.random() - 0.5) * 2;
-                this.color = `rgba(255, 255, 255, 0.2)`;
+
+        html,
+        body {
+            height: 100%;
+            overflow: hidden;
+            background: var(--bg-primary);
+            font-family: var(--font-sans);
+            color: var(--text-primary);
+            -webkit-font-smoothing: antialiased;
+            -moz-osx-font-smoothing: grayscale;
+            touch-action: none;
+            user-select: none;
+        }
+
+        /* ----- canvas (full‑screen) ----- */
+        #magic-canvas {
+            display: block;
+            width: 100vw;
+            height: 100vh;
+            touch-action: none;
+            background: var(--bg-primary);
+        }
+
+        /* ----- UI overlay (glassmorphism) ----- */
+        .ui-overlay {
+            position: fixed;
+            bottom: max(32px, env(safe-area-inset-bottom, 32px));
+            left: 50%;
+            transform: translateX(-50%);
+            z-index: 100;
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            gap: 12px;
+            pointer-events: none;
+            /* container lets clicks pass, button enables them */;
+        }
+
+        .ui-overlay button {
+            pointer-events: auto;
+            /* re‑enable on the button */
+            appearance: none;
+            -webkit-appearance: none;
+            border: none;
+            background: var(--glass-bg);
+            backdrop-filter: blur(18px) saturate(1.4);
+            -webkit-backdrop-filter: blur(18px) saturate(1.4);
+            border: 1px solid var(--glass-border);
+            border-radius: var(--radius-pill);
+            padding: 16px 42px;
+            color: var(--text-primary);
+            font-size: clamp(1rem, 2.2vw, 1.25rem);
+            font-weight: 500;
+            letter-spacing: 0.03em;
+            cursor: pointer;
+            transition: all var(--transition-smooth);
+            box-shadow: var(--shadow-glow);
+            font-family: var(--font-sans);
+            touch-action: manipulation;
+            min-width: 200px;
+        }
+
+        .ui-overlay button:hover {
+            background: rgba(255, 255, 255, 0.10);
+            transform: scale(1.04);
+            border-color: rgba(255, 255, 255, 0.20);
+        }
+
+        .ui-overlay button:active {
+            transform: scale(0.96);
+            transition-duration: 0.08s;
+        }
+
+        .ui-overlay button:focus-visible {
+            outline: 2px solid var(--accent-blue);
+            outline-offset: 4px;
+        }
+
+        /* ----- status message (aria‑live) ----- */
+        .status-message {
+            pointer-events: none;
+            font-size: 0.85rem;
+            opacity: 0.7;
+            letter-spacing: 0.02em;
+            background: rgba(0, 0, 0, 0.40);
+            backdrop-filter: blur(8px);
+            -webkit-backdrop-filter: blur(8px);
+            padding: 6px 18px;
+            border-radius: 40px;
+            border: 1px solid rgba(255, 255, 255, 0.06);
+            transition: opacity 0.5s ease;
+            min-height: 1.6em;
+            text-align: center;
+            max-width: 90vw;
+            white-space: nowrap;
+            overflow: hidden;
+            text-overflow: ellipsis;
+        }
+
+        .status-message[aria-hidden="true"] {
+            opacity: 0;
+            transform: translateY(6px);
+        }
+
+        /* ----- responsive tweaks ----- */
+        @media (max-width: 480px) {
+            .ui-overlay button {
+                padding: 14px 28px;
+                min-width: 160px;
+                font-size: 0.95rem;
+            }
+            .status-message {
+                font-size: 0.75rem;
+                padding: 4px 14px;
+                white-space: normal;
+                max-width: 85vw;
             }
         }
+
+        @media (prefers-reduced-motion: reduce) {
+            *,
+            *::before,
+            *::after {
+                animation-duration: 0.01ms !important;
+                transition-duration: 0.01ms !important;
+            }
+        }
+
+        /* ----- high‑contrast / dark‑mode friendly ----- */
+        @media (prefers-contrast: high) {
+            :root {
+                --glass-bg: rgba(255, 255, 255, 0.12);
+                --glass-border: rgba(255, 255, 255, 0.30);
+            }
+            .ui-overlay button {
+                border-width: 2px;
+            }
+        }
+    </style>
+</head>
+
+<body>
+
+    <!-- ===== SEMANTIC UI ===== -->
+    <div class="ui-overlay" role="toolbar" aria-label="Керування розпізнаванням мовлення">
+        <button id="speech-btn" type="button" aria-label="Натисніть та промовте фразу українською">
+            <span aria-hidden="true">🎙</span> Натисни та промов
+        </button>
+        <div
+        class="status-message"
+        id="status"
+        role="status"
+        aria-live="polite"
+        aria-atomic="true"
+        aria-hidden="true"
+        >
+        Готовий
+    </div>
+</div>
+
+<!-- ===== CANVAS ===== -->
+<canvas id="magic-canvas" aria-label="Анімація частинок, що утворюють текст"></canvas>
+
+<!-- ===== MODERN ES MODULE (2027) ===== -->
+<script type="module">
+    // ------------------------------------------------------------------
+    //  1.  Imports (none – all native)
+    // ------------------------------------------------------------------
+
+    // ------------------------------------------------------------------
+    //  2.  DOM refs
+    // ------------------------------------------------------------------
+    const canvas = document.getElementById('magic-canvas');
+    const ctx = canvas.getContext('2d', { alpha: false, willReadFrequently: false });
+    const statusEl = document.getElementById('status');
+    const speechBtn = document.getElementById('speech-btn');
+
+    // ------------------------------------------------------------------
+    //  3.  State
+    // ------------------------------------------------------------------
+    let width = 0;
+    let height = 0;
+    let dpr = 1;
+
+    /** @type {Particle[]} */
+    let particles = [];
+    /** @type {{ x: number, y: number, color: string }[]} */
+    let targets = [];
+    /** @type {number | null} */
+    let animFrameId = null;
+    /** @type {SpeechRecognition | null} */
+    let recognition = null;
+
+    // ------------------------------------------------------------------
+    //  4.  Particle class (modern)
+    // ------------------------------------------------------------------
+    class Particle {
+        /** @param {{ x: number, y: number }} [pos] */
+        constructor(pos) {
+            this.x = pos?.x ?? Math.random() * width;
+            this.y = pos?.y ?? Math.random() * height;
+            this.vx = (Math.random() - 0.5) * 2.4;
+            this.vy = (Math.random() - 0.5) * 2.4;
+            this.color = 'rgba(255,255,255,0.25)';
+            this.size = 1.6 + Math.random() * 0.8;
+        }
+
+        /** @param {{ x: number, y: number, color: string } | null} target */
+        update(target) {
+            if (target) {
+                // smooth toward target
+                const ease = 0.072;
+                this.x += (target.x - this.x) * ease;
+                this.y += (target.y - this.y) * ease;
+                this.color = target.color;
+            } else {
+                // free‑float
+                this.x += this.vx;
+                this.y += this.vy;
+                if (this.x < 0 || this.x > width) this.vx *= -1;
+                if (this.y < 0 || this.y > height) this.vy *= -1;
+                this.color = `rgba(255,255,255,0.18)`;
+            }
+        }
+
         draw() {
             ctx.fillStyle = this.color;
             ctx.beginPath();
-            ctx.arc(this.x, this.y, 2, 0, Math.PI * 2);
+            ctx.arc(this.x, this.y, this.size, 0, Math.PI * 2);
             ctx.fill();
         }
     }
 
-    function getTargets(text) {
+    // ------------------------------------------------------------------
+    //  5.  Canvas sizing (with devicePixelRatio support)
+    // ------------------------------------------------------------------
+    function resizeCanvas() {
+        const rect = canvas.getBoundingClientRect();
+        dpr = Math.min(window.devicePixelRatio || 1, 2); // cap for performance
+        width = rect.width;
+        height = rect.height;
+
+        canvas.width = width * dpr;
+        canvas.height = height * dpr;
+        canvas.style.width = `${width}px`;
+        canvas.style.height = `${height}px`;
+
+        ctx.scale(dpr, dpr);
+
+        // re‑init particles if needed
+        if (particles.length === 0) {
+            particles = Array.from({ length: 3200 }, () => new Particle());
+        } else {
+            // re‑distribute if size changed dramatically
+            const area = width * height;
+            const desired = Math.min(4200, Math.max(1800, Math.floor(area / 280)));
+            if (Math.abs(particles.length - desired) > 300) {
+                particles = Array.from({ length: desired }, () => new Particle());
+            }
+        }
+        // clear targets so they re‑form on next speech
+        targets = [];
+    }
+
+    // ------------------------------------------------------------------
+    //  6.  Text → target points (Ukrainian flag colours)
+    // ------------------------------------------------------------------
+    /**
+     * @param {string} text – upper‑case phrase
+     * @returns {{ x: number, y: number, color: string }[]}
+     */
+    function getTargetsFromText(text) {
         const off = document.createElement('canvas');
-        const octx = off.getContext('2d');
-        off.width = width; off.height = height;
-        
-        const fontSize = Math.min(width / (text.length > 10 ? 10 : 5), 80);
-        octx.font = `bold ${fontSize}px Arial`;
+        const octx = off.getContext('2d', { alpha: false, willReadFrequently: true });
+        off.width = width;
+        off.height = height;
+
+        // adaptive font size
+        const maxWidth = width * 0.88;
+        const idealSize = Math.min(maxWidth / (text.length * 0.38), height / 4.8);
+        const fontSize = Math.max(24, Math.min(180, idealSize));
+
+        octx.fillStyle = '#000';
+        octx.fillRect(0, 0, width, height);
+
         octx.textAlign = 'center';
         octx.textBaseline = 'middle';
-        
-        const words = text.split(' ');
-        let lines = [], current = words[0];
-        for(let i=1; i<words.length; i++) {
-            if(octx.measureText(current + " " + words[i]).width < width * 0.7) current += " " + words[i];
-            else { lines.push(current); current = words[i]; }
+        octx.font = `bold ${fontSize}px "SF Pro Display", "Helvetica Neue", Arial, sans-serif`;
+
+        // word‑wrap
+        const words = text.split(/\s+/).filter(w => w.length > 0);
+        if (words.length === 0) return [];
+
+        const lines = [];
+        let current = words[0];
+        for (let i = 1; i < words.length; i++) {
+            const test = current + ' ' + words[i];
+            if (octx.measureText(test).width < maxWidth) {
+                current = test;
+            } else {
+                lines.push(current);
+                current = words[i];
+            }
         }
         lines.push(current);
 
-        let coords = [];
-        lines.forEach((line, idx) => {
-            const y = height/2 - (lines.length-1)*fontSize/2 + idx*fontSize;
-            octx.fillStyle = 'white';
-            octx.fillText(line, width/2, y);
-        });
+        const lineHeight = fontSize * 1.18;
+        const totalHeight = lines.length * lineHeight;
+        const startY = (height - totalHeight) / 2 + lineHeight / 2;
 
+        octx.fillStyle = '#fff';
+        for (let i = 0; i < lines.length; i++) {
+            const y = startY + i * lineHeight;
+            octx.fillText(lines[i], width / 2, y);
+        }
+
+        // sample pixels
         const data = octx.getImageData(0, 0, width, height).data;
-        for (let i = 0; i < data.length; i += 32) {
-            if (data[i + 3] > 128) {
-                const x = (i/4) % width;
-                const y = Math.floor((i/4) / width);
-                coords.push({x, y, color: y < height/2 ? '#4A90E2' : '#FFD700'});
+        const coords = [];
+        const step = 2; // sample every 2px for performance
+
+        // pre‑compute colour split
+        const midY = height / 2;
+
+        for (let y = 0; y < height; y += step) {
+            const rowBase = y * width * 4;
+            for (let x = 0; x < width; x += step) {
+                const idx = rowBase + x * 4;
+                if (data[idx + 3] > 128) {
+                    const color = y < midY ? '#4A90E2' : '#FFD700';
+                    coords.push({ x, y, color });
+                }
             }
         }
+
         return coords;
     }
 
-    function loop() {
-        ctx.fillStyle = 'rgba(2, 5, 10, 0.15)';
+    // ------------------------------------------------------------------
+    //  7.  Render loop (optimised)
+    // ------------------------------------------------------------------
+    function render() {
+        // subtle trail (fade)
+        ctx.fillStyle = 'rgba(2, 5, 10, 0.18)';
         ctx.fillRect(0, 0, width, height);
-        particles.forEach((p, i) => {
-            p.update(targets[i % targets.length]);
-            p.draw();
-        });
-        requestAnimationFrame(loop);
+
+        const targetLen = targets.length;
+        for (let i = 0; i < particles.length; i++) {
+            const t = targetLen > 0 ? targets[i % targetLen] : null;
+            particles[i].update(t);
+            particles[i].draw();
+        }
+
+        animFrameId = requestAnimationFrame(render);
     }
 
-    const btn = document.getElementById('btn');
-    const rec = new (window.SpeechRecognition || window.webkitSpeechRecognition)();
-    rec.lang = 'uk-UA';
-    
-    btn.onclick = () => {
-        rec.start();
-        isListening = true;
-        btn.classList.add('listening');
-        btn.innerText = "Слухаю...";
-    };
+    // ------------------------------------------------------------------
+    //  8.  Speech Recognition (standard API + fallback)
+    // ------------------------------------------------------------------
+    function initSpeech() {
+        const SR = window.SpeechRecognition || window.webkitSpeechRecognition;
+        if (!SR) {
+            statusEl.textContent = '⚠️ Ваш браузер не підтримує голосове введення';
+            statusEl.setAttribute('aria-hidden', 'false');
+            speechBtn.disabled = true;
+            speechBtn.style.opacity = '0.5';
+            return null;
+        }
 
-    rec.onresult = (e) => {
-        targets = getTargets(e.results[0][0].transcript.toUpperCase());
-        isListening = false;
-        btn.classList.remove('listening');
-        btn.innerText = "Скажи ще щось";
-    };
+        const rec = new SR();
+        rec.lang = 'uk-UA';
+        rec.interimResults = false;
+        rec.maxAlternatives = 1;
+        rec.continuous = false;
 
+        // ---- events ----
+        rec.onstart = () => {
+            statusEl.textContent = '🎤 Слухаю…';
+            statusEl.setAttribute('aria-hidden', 'false');
+            speechBtn.textContent = '⏳ Слухаю…';
+            speechBtn.disabled = true;
+        };
+
+        rec.onresult = (e) => {
+            const transcript = e.results[0]?.[0]?.transcript?.trim();
+            if (transcript) {
+                const upper = transcript.toUpperCase();
+                statusEl.textContent = `✨ «${transcript}»`;
+                // generate new targets
+                targets = getTargetsFromText(upper);
+                if (targets.length === 0) {
+                    statusEl.textContent = '⚠️ Спробуйте іншу фразу';
+                }
+            } else {
+                statusEl.textContent = '😕 Не розпізнано, спробуйте ще';
+            }
+            speechBtn.disabled = false;
+            speechBtn.innerHTML = '<span aria-hidden="true">🎙</span> Натисни та промов';
+        };
+
+        rec.onerror = (e) => {
+            console.warn('SpeechRecognition error:', e.error, e.message);
+            let msg = '❌ Помилка';
+            if (e.error === 'not-allowed') msg = '🚫 Доступ до мікрофона заборонено';
+            else if (e.error === 'no-speech') msg = '🔇 Не почуто, спробуйте ще';
+            else if (e.error === 'audio-capture') msg = '🎧 Мікрофон не знайдено';
+            else if (e.error === 'network') msg = '🌐 Перевірте з\'єднання';
+            statusEl.textContent = msg;
+            statusEl.setAttribute('aria-hidden', 'false');
+            speechBtn.disabled = false;
+            speechBtn.innerHTML = '<span aria-hidden="true">🎙</span> Натисни та промов';
+        };
+
+        rec.onend = () => {
+            // if no result was set, show idle
+            if (!statusEl.textContent.includes('«')) {
+                statusEl.textContent = '🎧 Готовий';
+                statusEl.setAttribute('aria-hidden', 'true');
+            }
+            speechBtn.disabled = false;
+            speechBtn.innerHTML = '<span aria-hidden="true">🎙</span> Натисни та промов';
+        };
+
+        return rec;
+    }
+
+    // ------------------------------------------------------------------
+    //  9.  Start / stop
+    // ------------------------------------------------------------------
+    function startListening() {
+        if (!recognition) {
+            statusEl.textContent = '⚠️ Голосове введення недоступне';
+            statusEl.setAttribute('aria-hidden', 'false');
+            return;
+        }
+        try {
+            recognition.start();
+        } catch (_) {
+            // if already started, stop and restart
+            try { recognition.stop(); } catch (__) { /* ignore */ }
+            setTimeout(() => {
+                try { recognition.start(); } catch (___ ) { /* ignore */ }
+            }, 120);
+        }
+    }
+
+    // ------------------------------------------------------------------
+    //  10.  Initialisation
+    // ------------------------------------------------------------------
     function init() {
-        width = canvas.width = window.innerWidth;
-        height = canvas.height = window.innerHeight;
-        particles = Array.from({length: 3000}, () => new Particle());
+        // resize & setup canvas
+        resizeCanvas();
+
+        // speech
+        recognition = initSpeech();
+
+        // start render loop
+        if (animFrameId) cancelAnimationFrame(animFrameId);
+        render();
+
+        // show ready status after a beat
+        setTimeout(() => {
+            statusEl.textContent = '🎧 Готовий';
+            statusEl.setAttribute('aria-hidden', 'true');
+        }, 400);
     }
 
-    window.onresize = init;
-    init(); loop();
+    // ------------------------------------------------------------------
+    //  11.  Event listeners (modern)
+    // ------------------------------------------------------------------
+    // ---- resize ----
+    const resizeObserver = new ResizeObserver(() => resizeCanvas());
+    resizeObserver.observe(canvas);
+
+    // Also listen to orientation / window resize for safety
+    window.addEventListener('resize', () => resizeCanvas(), { passive: true });
+    window.addEventListener('orientationchange', () => {
+        setTimeout(resizeCanvas, 200);
+    }, { passive: true });
+
+    // ---- speech button ----
+    speechBtn.addEventListener('click', startListening);
+
+    // ---- keyboard shortcut (Space) ----
+    document.addEventListener('keydown', (e) => {
+        if (e.key === ' ' && e.target === document.body) {
+            e.preventDefault();
+            startListening();
+        }
+    });
+
+    // ---- visibility change: pause/resume for performance ----
+    document.addEventListener('visibilitychange', () => {
+        if (document.hidden) {
+            // pause render? we keep it running but reduce load via fade
+            // actually we just let it run, but we can reduce particle count if needed
+        } else {
+            // re‑sync canvas size in case it changed while hidden
+            resizeCanvas();
+        }
+    });
+
+    // ------------------------------------------------------------------
+    //  12.  Go!
+    // ------------------------------------------------------------------
+    init();
+
+    // expose for debugging (optional)
+    // console.log('✨ Українська Магія 2027');
+
+    // ------------------------------------------------------------------
+    //  13.  Cleanup (not strictly needed for SPA, but good practice)
+    // ------------------------------------------------------------------
+    window.addEventListener('beforeunload', () => {
+        if (animFrameId) cancelAnimationFrame(animFrameId);
+        if (recognition) {
+            try { recognition.abort(); } catch (_) { /* ignore */ }
+        }
+        resizeObserver.disconnect();
+    });
 </script>
 </body>
 </html>

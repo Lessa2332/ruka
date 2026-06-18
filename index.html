@@ -1,616 +1,73 @@
 <!DOCTYPE html>
-<html lang="uk">
+<html>
 <head>
-    <meta charset="UTF-8" />
-    <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover" />
-    <title>Українська Магія ✦ 2027</title>
-    <style>
-        *,
-        *::before,
-        *::after {
-            margin: 0;
-            padding: 0;
-            box-sizing: border-box;
-        }
-        :root {
-            --bg: #02050a;
-            --glass: rgba(255, 255, 255, 0.04);
-            --border: rgba(255, 255, 255, 0.10);
-            --text: #f0f4ff;
-            --radius: 9999px;
-            --shadow: 0 8px 32px rgba(74, 144, 226, 0.15);
-            --blue: #4A90E2;
-            --gold: #FFD700;
-        }
-        html,
-        body {
-            height: 100%;
-            overflow: hidden;
-            background: var(--bg);
-            font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, system-ui, sans-serif;
-            touch-action: none;
-            user-select: none;
-        }
-        canvas {
-            display: block;
-            width: 100vw;
-            height: 100vh;
-            touch-action: none;
-            background: var(--bg);
-        }
-        .ui {
-            position: fixed;
-            bottom: max(32px, env(safe-area-inset-bottom, 32px));
-            left: 50%;
-            transform: translateX(-50%);
-            z-index: 100;
-            display: flex;
-            flex-direction: column;
-            align-items: center;
-            gap: 12px;
-            pointer-events: none;
-        }
-        .ui button {
-            pointer-events: auto;
-            appearance: none;
-            border: none;
-            background: var(--glass);
-            backdrop-filter: blur(18px) saturate(1.4);
-            -webkit-backdrop-filter: blur(18px) saturate(1.4);
-            border: 1px solid var(--border);
-            border-radius: var(--radius);
-            padding: 16px 42px;
-            color: var(--text);
-            font-size: clamp(1rem, 2.2vw, 1.25rem);
-            font-weight: 500;
-            letter-spacing: 0.03em;
-            cursor: pointer;
-            transition: 0.3s cubic-bezier(0.22, 1, 0.36, 1);
-            box-shadow: var(--shadow);
-            touch-action: manipulation;
-            min-width: 200px;
-            font-family: inherit;
-        }
-        .ui button:hover {
-            background: rgba(255, 255, 255, 0.10);
-            transform: scale(1.04);
-            border-color: rgba(255, 255, 255, 0.20);
-        }
-        .ui button:active {
-            transform: scale(0.96);
-        }
-        .ui button:disabled {
-            opacity: 0.5;
-            transform: scale(0.98);
-            cursor: not-allowed;
-        }
-        .status {
-            pointer-events: none;
-            font-size: 0.85rem;
-            opacity: 0.85;
-            background: rgba(0, 0, 0, 0.50);
-            backdrop-filter: blur(8px);
-            -webkit-backdrop-filter: blur(8px);
-            padding: 6px 18px;
-            border-radius: 40px;
-            border: 1px solid rgba(255, 255, 255, 0.06);
-            transition: opacity 0.4s ease, transform 0.4s ease;
-            min-height: 1.6em;
-            text-align: center;
-            max-width: 90vw;
-            white-space: nowrap;
-            overflow: hidden;
-            text-overflow: ellipsis;
-            color: #d0d8f0;
-        }
-        .status.hidden {
-            opacity: 0;
-            transform: translateY(6px);
-            pointer-events: none;
-        }
-        .word-badge {
-            pointer-events: none;
-            font-size: 0.75rem;
-            opacity: 0.4;
-            letter-spacing: 0.06em;
-            background: rgba(0, 0, 0, 0.30);
-            backdrop-filter: blur(4px);
-            padding: 4px 16px;
-            border-radius: 30px;
-            border: 1px solid rgba(255, 255, 255, 0.04);
-            color: #aab4d0;
-            transition: 0.4s ease;
-            max-width: 80vw;
-            overflow: hidden;
-            text-overflow: ellipsis;
-            white-space: nowrap;
-        }
-        .word-badge.show {
-            opacity: 0.7;
-        }
-        @media (max-width: 480px) {
-            .ui button {
-                padding: 14px 28px;
-                min-width: 160px;
-                font-size: 0.95rem;
-            }
-            .status {
-                font-size: 0.75rem;
-                padding: 4px 14px;
-                white-space: normal;
-                max-width: 85vw;
-            }
-            .word-badge {
-                font-size: 0.65rem;
-                padding: 3px 12px;
-                max-width: 85vw;
-            }
-        }
-        @media (prefers-reduced-motion: reduce) {
-            * {
-                transition-duration: 0.01ms !important;
-            }
-        }
-    </style>
+    <style>body { margin: 0; overflow: hidden; background: black; }</style>
 </head>
 <body>
-    <div class="ui" role="toolbar" aria-label="Керування">
-        <button id="speechBtn" type="button" aria-label="Натисніть та промовте українською">
-            <span aria-hidden="true">🎙</span> Натисни та промов
-        </button>
-        <div class="word-badge" id="wordBadge">🇺🇦</div>
-        <div class="status hidden" id="status" role="status" aria-live="polite" aria-atomic="true">Готовий</div>
-    </div>
-    <canvas id="canvas"></canvas>
-
     <script type="module">
-        // ============================================================
-        //  1.  DOM REFS
-        // ============================================================
-        const canvas = document.getElementById('canvas');
-        const ctx = canvas.getContext('2d', { alpha: false, willReadFrequently: false });
-        const statusEl = document.getElementById('status');
-        const speechBtn = document.getElementById('speechBtn');
-        const wordBadge = document.getElementById('wordBadge');
+        import * as THREE from 'https://cdn.skypack.dev/three@0.136.0';
+        import { Hands } from 'https://cdn.skypack.dev/@mediapipe/hands';
+        import { Camera } from 'https://cdn.skypack.dev/@mediapipe/camera_utils';
 
-        // ============================================================
-        //  2.  STATE
-        // ============================================================
-        let W = 0,
-            H = 0;
-        let dpr = 1;
-        let particles = [];
-        let targets = [];
-        let animId = null;
-        let recognition = null;
-        let currentText = 'СЛАВА УКРАЇНІ';
+        // 1. Сцена Three.js
+        const scene = new THREE.Scene();
+        const camera = new THREE.PerspectiveCamera(75, window.innerWidth/window.innerHeight, 0.1, 1000);
+        const renderer = new THREE.WebGLRenderer();
+        renderer.setSize(window.innerWidth, window.innerHeight);
+        document.body.appendChild(renderer.domElement);
+        camera.position.z = 5;
 
-        // ============================================================
-        //  3.  PARTICLE CLASS
-        // ============================================================
-        class Particle {
-            constructor(x, y) {
-                this.x = x ?? Math.random() * W;
-                this.y = y ?? Math.random() * H;
-                this.vx = (Math.random() - 0.5) * 2.4;
-                this.vy = (Math.random() - 0.5) * 2.4;
-                this.color = 'rgba(255,255,255,0.12)';
-                this.size = 1.8 + Math.random() * 1.0;
-                this.homeX = this.x;
-                this.homeY = this.y;
-            }
+        // Створення частинок
+        const geometry = new THREE.BufferGeometry();
+        const particles = 2000;
+        const positions = new Float32Array(particles * 3);
+        geometry.setAttribute('position', new THREE.BufferAttribute(positions, 3));
+        const material = new THREE.PointsMaterial({ size: 0.05, vertexColors: true });
+        const points = new THREE.Points(geometry, material);
+        scene.add(points);
 
-            update(target) {
-                if (target) {
-                    // smooth attraction toward target
-                    const dx = target.x - this.x;
-                    const dy = target.y - this.y;
-                    const ease = 0.10;
-                    this.x += dx * ease;
-                    this.y += dy * ease;
-                    this.color = target.color;
-                    // store home for possible later use
-                    this.homeX = target.x;
-                    this.homeY = target.y;
-                } else {
-                    // chaotic drift
-                    this.x += this.vx;
-                    this.y += this.vy;
-                    // boundary bounce
-                    if (this.x < 0 || this.x > W) this.vx *= -1;
-                    if (this.y < 0 || this.y > H) this.vy *= -1;
-                    // slight random jitter
-                    this.vx += (Math.random() - 0.5) * 0.06;
-                    this.vy += (Math.random() - 0.5) * 0.06;
-                    // clamp speed
-                    const maxSpeed = 2.0;
-                    const sp = Math.hypot(this.vx, this.vy);
-                    if (sp > maxSpeed) {
-                        this.vx = (this.vx / sp) * maxSpeed;
-                        this.vy = (this.vy / sp) * maxSpeed;
-                    }
-                    this.color = `rgba(255,255,255,${0.08 + Math.random() * 0.08})`;
+        // 2. Логіка зміни форми (функція для оновлення точок)
+        function updateParticles(type) {
+            const colors = new Float32Array(particles * 3);
+            for(let i=0; i<particles; i++) {
+                if(type === 'flag') { // Синьо-жовті частинки
+                    colors[i*3] = i < particles/2 ? 0 : 1;
+                    colors[i*3+1] = i < particles/2 ? 0 : 1;
+                    colors[i*3+2] = 1;
+                } else { // Монохром (для тексту)
+                    colors[i*3] = colors[i*3+1] = colors[i*3+2] = 1;
                 }
             }
-
-            draw() {
-                ctx.fillStyle = this.color;
-                ctx.beginPath();
-                ctx.arc(this.x, this.y, this.size, 0, Math.PI * 2);
-                ctx.fill();
-            }
+            geometry.setAttribute('color', new THREE.BufferAttribute(colors, 3));
         }
 
-        // ============================================================
-        //  4.  CANVAS SIZING
-        // ============================================================
-        function resizeCanvas() {
-            const rect = canvas.getBoundingClientRect();
-            dpr = Math.min(window.devicePixelRatio || 1, 2);
-            W = rect.width;
-            H = rect.height;
-            canvas.width = W * dpr;
-            canvas.height = H * dpr;
-            canvas.style.width = W + 'px';
-            canvas.style.height = H + 'px';
-            ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
-
-            const desired = Math.min(4800, Math.max(1800, Math.floor((W * H) / 220)));
-            if (particles.length === 0 || Math.abs(particles.length - desired) > 400) {
-                particles = Array.from({ length: desired }, () => new Particle());
-            }
-            // if targets exist, re-generate them for new size
-            if (targets.length > 0 && currentText) {
-                const newTargets = generateTargets(currentText);
-                if (newTargets.length > 50) targets = newTargets;
-            }
-        }
-
-        // ============================================================
-        //  5.  GENERATE TARGETS FROM TEXT (robust)
-        // ============================================================
-        function generateTargets(text) {
-            if (!text || text.trim().length === 0) return [];
-
-            const clean = text.trim().toUpperCase();
-            if (clean.length === 0) return [];
-
-            const off = document.createElement('canvas');
-            const octx = off.getContext('2d', { alpha: false, willReadFrequently: true });
-            off.width = W;
-            off.height = H;
-
-            // black background
-            octx.fillStyle = '#000';
-            octx.fillRect(0, 0, W, H);
-
-            // ----- adaptive font -----
-            const maxWidth = W * 0.92;
-            // prefer large font for readability
-            let fontSize = Math.min(
-                Math.max(32, maxWidth / (clean.length * 0.30)),
-                H / 4.0,
-                200
-            );
-
-            // ensure we have a reasonable size
-            fontSize = Math.max(28, fontSize);
-
-            const fontFamily = '"Helvetica Neue", "SF Pro Display", Arial, sans-serif';
-            octx.font = `bold ${fontSize}px ${fontFamily}`;
-            octx.textAlign = 'center';
-            octx.textBaseline = 'middle';
-
-            // ----- word wrap -----
-            const words = clean.split(/\s+/).filter(w => w.length > 0);
-            if (words.length === 0) return [];
-
-            const lines = [];
-            let current = words[0];
-            for (let i = 1; i < words.length; i++) {
-                const test = current + ' ' + words[i];
-                if (octx.measureText(test).width < maxWidth) {
-                    current = test;
-                } else {
-                    lines.push(current);
-                    current = words[i];
-                }
-            }
-            lines.push(current);
-
-            // if too many lines, reduce font size
-            if (lines.length > 4) {
-                const newSize = fontSize * 0.7;
-                fontSize = Math.max(24, newSize);
-                octx.font = `bold ${fontSize}px ${fontFamily}`;
-                // re-wrap with new size
-                const lines2 = [];
-                let cur2 = words[0];
-                for (let i = 1; i < words.length; i++) {
-                    const test = cur2 + ' ' + words[i];
-                    if (octx.measureText(test).width < maxWidth) {
-                        cur2 = test;
-                    } else {
-                        lines2.push(cur2);
-                        cur2 = words[i];
-                    }
-                }
-                lines2.push(cur2);
-                lines.length = 0;
-                lines.push(...lines2);
-            }
-
-            const lineHeight = fontSize * 1.2;
-            const totalH = lines.length * lineHeight;
-            const startY = (H - totalH) / 2 + lineHeight / 2;
-
-            // ----- render text in white -----
-            octx.fillStyle = '#fff';
-            for (let i = 0; i < lines.length; i++) {
-                const y = startY + i * lineHeight;
-                octx.fillText(lines[i], W / 2, y);
-            }
-
-            // ----- sample pixels -----
-            const imageData = octx.getImageData(0, 0, W, H);
-            const data = imageData.data;
-            const coords = [];
-            const midY = H / 2;
-
-            // dynamic step: keep total points reasonable
-            const totalPixels = W * H;
-            let step = 1;
-            if (totalPixels > 2500000) step = 2;
-            if (totalPixels > 5000000) step = 3;
-
-            let count = 0;
-            const maxPoints = Math.min(particles.length * 1.2, 6000);
-
-            for (let y = 0; y < H; y += step) {
-                const row = y * W * 4;
-                for (let x = 0; x < W; x += step) {
-                    const idx = row + x * 4;
-                    if (data[idx + 3] > 128) {
-                        const color = y < midY ? '#4A90E2' : '#FFD700';
-                        coords.push({ x, y, color });
-                        count++;
-                        if (count >= maxPoints) break;
-                    }
-                }
-                if (count >= maxPoints) break;
-            }
-
-            // if we got very few points, try with step 1
-            if (coords.length < 100 && step > 1) {
-                // re-sample with step 1 (but only if it won't blow up)
-                const coords2 = [];
-                let count2 = 0;
-                for (let y = 0; y < H; y += 1) {
-                    const row = y * W * 4;
-                    for (let x = 0; x < W; x += 1) {
-                        const idx = row + x * 4;
-                        if (data[idx + 3] > 128) {
-                            const color = y < midY ? '#4A90E2' : '#FFD700';
-                            coords2.push({ x, y, color });
-                            count2++;
-                            if (count2 >= maxPoints) break;
-                        }
-                    }
-                    if (count2 >= maxPoints) break;
-                }
-                if (coords2.length > coords.length) {
-                    return coords2;
-                }
-            }
-
-            return coords;
-        }
-
-        // ============================================================
-        //  6.  RENDER LOOP
-        // ============================================================
-        function render() {
-            // fade trail
-            ctx.fillStyle = 'rgba(2, 5, 10, 0.14)';
-            ctx.fillRect(0, 0, W, H);
-
-            const tLen = targets.length;
-            for (let i = 0; i < particles.length; i++) {
-                const t = tLen > 0 ? targets[i % tLen] : null;
-                particles[i].update(t);
-                particles[i].draw();
-            }
-
-            animId = requestAnimationFrame(render);
-        }
-
-        // ============================================================
-        //  7.  SET TEXT & UPDATE TARGETS
-        // ============================================================
-        function setText(text) {
-            if (!text || text.trim().length === 0) {
-                targets = [];
-                currentText = '';
-                wordBadge.textContent = '🇺🇦';
-                wordBadge.classList.remove('show');
-                return;
-            }
-
-            const upper = text.trim().toUpperCase();
-            currentText = upper;
-
-            // show badge
-            wordBadge.textContent = `✦ ${upper}`;
-            wordBadge.classList.add('show');
-
-            const newTargets = generateTargets(upper);
-            if (newTargets.length > 50) {
-                targets = newTargets;
-                // ensure we have enough particles
-                if (particles.length < targets.length * 0.7) {
-                    const extra = Math.min(targets.length * 1.1 - particles.length, 2000);
-                    for (let i = 0; i < extra; i++) {
-                        particles.push(new Particle());
-                    }
-                }
-                // if too many particles, cap them
-                if (particles.length > targets.length * 2.5) {
-                    particles.length = Math.floor(targets.length * 2.2);
-                }
-                statusEl.textContent = `✨ «${text}» (${targets.length} точок)`;
-                statusEl.classList.remove('hidden');
-                setTimeout(() => {
-                    if (!statusEl.textContent.includes('Слухаю')) {
-                        statusEl.classList.add('hidden');
-                    }
-                }, 3000);
-            } else {
-                targets = [];
-                statusEl.textContent = '⚠️ Замало точок, спробуйте іншу фразу';
-                statusEl.classList.remove('hidden');
-                setTimeout(() => {
-                    if (!statusEl.textContent.includes('Слухаю')) {
-                        statusEl.classList.add('hidden');
-                    }
-                }, 2500);
-            }
-        }
-
-        // ============================================================
-        //  8.  SPEECH RECOGNITION
-        // ============================================================
-        function initSpeech() {
-            const SR = window.SpeechRecognition || window.webkitSpeechRecognition;
-            if (!SR) {
-                statusEl.textContent = '⚠️ Ваш браузер не підтримує голосове введення';
-                statusEl.classList.remove('hidden');
-                speechBtn.disabled = true;
-                return null;
-            }
-
-            const rec = new SR();
-            rec.lang = 'uk-UA';
-            rec.interimResults = false;
-            rec.maxAlternatives = 1;
-            rec.continuous = false;
-
-            rec.onstart = () => {
-                statusEl.textContent = '🎤 Слухаю…';
-                statusEl.classList.remove('hidden');
-                speechBtn.innerHTML = '⏳ Слухаю…';
-                speechBtn.disabled = true;
-            };
-
-            rec.onresult = (e) => {
-                const transcript = e.results[0]?.[0]?.transcript?.trim() || '';
-                if (transcript) {
-                    setText(transcript);
-                } else {
-                    statusEl.textContent = '😕 Не розпізнано, спробуйте ще';
-                    statusEl.classList.remove('hidden');
-                    setTimeout(() => {
-                        if (!statusEl.textContent.includes('Слухаю')) {
-                            statusEl.classList.add('hidden');
-                        }
-                    }, 2000);
-                }
-                speechBtn.disabled = false;
-                speechBtn.innerHTML = '<span aria-hidden="true">🎙</span> Натисни та промов';
-            };
-
-            rec.onerror = (e) => {
-                let msg = '❌ Помилка';
-                if (e.error === 'not-allowed') msg = '🚫 Доступ до мікрофона заборонено';
-                else if (e.error === 'no-speech') msg = '🔇 Не почуто, спробуйте ще';
-                else if (e.error === 'audio-capture') msg = '🎧 Мікрофон не знайдено';
-                else if (e.error === 'network') msg = '🌐 Перевірте з\'єднання';
-                statusEl.textContent = msg;
-                statusEl.classList.remove('hidden');
-                speechBtn.disabled = false;
-                speechBtn.innerHTML = '<span aria-hidden="true">🎙</span> Натисни та промов';
-                setTimeout(() => {
-                    if (!statusEl.textContent.includes('Слухаю')) {
-                        statusEl.classList.add('hidden');
-                    }
-                }, 2500);
-            };
-
-            rec.onend = () => {
-                if (!statusEl.textContent.includes('«')) {
-                    statusEl.textContent = '🎧 Готовий';
-                    statusEl.classList.add('hidden');
-                }
-                speechBtn.disabled = false;
-                speechBtn.innerHTML = '<span aria-hidden="true">🎙</span> Натисни та промов';
-            };
-
-            return rec;
-        }
-
-        function startListening() {
-            if (!recognition) {
-                statusEl.textContent = '⚠️ Голосове введення недоступне';
-                statusEl.classList.remove('hidden');
-                return;
-            }
-            try {
-                recognition.start();
-            } catch (_) {
-                try { recognition.stop(); } catch (__) {}
-                setTimeout(() => {
-                    try { recognition.start(); } catch (___ ) {}
-                }, 150);
-            }
-        }
-
-        // ============================================================
-        //  9.  INIT
-        // ============================================================
-        function init() {
-            resizeCanvas();
-            recognition = initSpeech();
-
-            // load default text after particles are ready
-            setTimeout(() => {
-                setText('СЛАВА УКРАЇНІ');
-            }, 400);
-
-            if (animId) cancelAnimationFrame(animId);
-            render();
-
-            setTimeout(() => {
-                statusEl.textContent = '🎧 Готовий';
-                statusEl.classList.add('hidden');
-            }, 600);
-        }
-
-        // ============================================================
-        //  10. EVENTS
-        // ============================================================
-        const ro = new ResizeObserver(() => resizeCanvas());
-        ro.observe(canvas);
-        window.addEventListener('resize', resizeCanvas, { passive: true });
-        window.addEventListener('orientationchange', () => setTimeout(resizeCanvas, 250), { passive: true });
-
-        speechBtn.addEventListener('click', startListening);
-
-        document.addEventListener('keydown', (e) => {
-            if (e.key === ' ' && e.target === document.body) {
-                e.preventDefault();
-                startListening();
+        // 3. MediaPipe Hands
+        const hands = new Hands({locateFile: (file) => `https://cdn.jsdelivr.net/npm/@mediapipe/hands/${file}`});
+        hands.onResults(results => {
+            if (results.multiHandLandmarks.length > 0) {
+                const landmarks = results.multiHandLandmarks[0];
+                // Проста логіка жестів
+                const isFist = landmarks[8].y > landmarks[6].y; // Спрощено
+                if (isFist) updateParticles('text'); 
+                else updateParticles('flag');
             }
         });
 
-        // ============================================================
-        //  11. GO
-        // ============================================================
-        init();
-
-        window.addEventListener('beforeunload', () => {
-            if (animId) cancelAnimationFrame(animId);
-            if (recognition) try { recognition.abort(); } catch (_) {}
-            ro.disconnect();
+        // Запуск камери
+        const videoElement = document.createElement('video');
+        const cameraSource = new Camera(videoElement, {
+            onFrame: async () => { await hands.send({image: videoElement}); },
+            width: 640, height: 480
         });
+        cameraSource.start();
+
+        // Рендеринг
+        function animate() {
+            requestAnimationFrame(animate);
+            points.rotation.y += 0.01;
+            renderer.render(scene, camera);
+        }
+        animate();
     </script>
 </body>
 </html>

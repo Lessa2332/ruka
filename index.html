@@ -4,6 +4,8 @@
     <style>body { margin: 0; overflow: hidden; background: black; }</style>
 </head>
 <body>
+    <video id="webcam" style="display:none;"></video>
+
     <script type="module">
         import * as THREE from 'https://cdn.skypack.dev/three@0.136.0';
         import { Hands } from 'https://cdn.skypack.dev/@mediapipe/hands';
@@ -18,43 +20,51 @@
         camera.position.z = 5;
 
         // Створення частинок
-        const geometry = new THREE.BufferGeometry();
         const particles = 2000;
+        const geometry = new THREE.BufferGeometry();
         const positions = new Float32Array(particles * 3);
+        for(let i=0; i<particles*3; i++) positions[i] = (Math.random() - 0.5) * 10;
         geometry.setAttribute('position', new THREE.BufferAttribute(positions, 3));
+        
+        // Ініціалізація кольорів
+        const colors = new Float32Array(particles * 3);
+        colors.fill(1);
+        geometry.setAttribute('color', new THREE.BufferAttribute(colors, 3));
+
         const material = new THREE.PointsMaterial({ size: 0.05, vertexColors: true });
         const points = new THREE.Points(geometry, material);
         scene.add(points);
 
-        // 2. Логіка зміни форми (функція для оновлення точок)
+        // 2. Логіка зміни кольорів
         function updateParticles(type) {
-            const colors = new Float32Array(particles * 3);
+            const colorAttr = geometry.attributes.color;
             for(let i=0; i<particles; i++) {
-                if(type === 'flag') { // Синьо-жовті частинки
-                    colors[i*3] = i < particles/2 ? 0 : 1;
-                    colors[i*3+1] = i < particles/2 ? 0 : 1;
-                    colors[i*3+2] = 1;
-                } else { // Монохром (для тексту)
-                    colors[i*3] = colors[i*3+1] = colors[i*3+2] = 1;
+                if(type === 'flag') {
+                    colorAttr.array[i*3] = i < particles/2 ? 0 : 1;     // R
+                    colorAttr.array[i*3+1] = i < particles/2 ? 0 : 1;   // G
+                    colorAttr.array[i*3+2] = 1;                         // B
+                } else {
+                    colorAttr.array[i*3] = colorAttr.array[i*3+1] = colorAttr.array[i*3+2] = 0.8;
                 }
             }
-            geometry.setAttribute('color', new THREE.BufferAttribute(colors, 3));
+            colorAttr.needsUpdate = true;
         }
 
         // 3. MediaPipe Hands
         const hands = new Hands({locateFile: (file) => `https://cdn.jsdelivr.net/npm/@mediapipe/hands/${file}`});
+        hands.setOptions({ maxNumHands: 1, modelComplexity: 1, minDetectionConfidence: 0.5 });
+        
         hands.onResults(results => {
             if (results.multiHandLandmarks.length > 0) {
                 const landmarks = results.multiHandLandmarks[0];
-                // Проста логіка жестів
-                const isFist = landmarks[8].y > landmarks[6].y; // Спрощено
-                if (isFist) updateParticles('text'); 
-                else updateParticles('flag');
+                // Якщо кінчик вказівного пальця (8) нижче суглоба (6) - це "стиснутий кулак"
+                const isFist = landmarks[8].y > landmarks[6].y;
+                updateParticles(isFist ? 'text' : 'flag');
             }
         });
 
         // Запуск камери
-        const videoElement = document.createElement('video');
+        const videoElement = document.getElementById('webcam');
         const cameraSource = new Camera(videoElement, {
             onFrame: async () => { await hands.send({image: videoElement}); },
             width: 640, height: 480
@@ -64,7 +74,7 @@
         // Рендеринг
         function animate() {
             requestAnimationFrame(animate);
-            points.rotation.y += 0.01;
+            points.rotation.y += 0.005;
             renderer.render(scene, camera);
         }
         animate();

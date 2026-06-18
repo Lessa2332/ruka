@@ -3,54 +3,54 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
-    <title>Українська Магія</title>
+    <title>Голосова магія</title>
     <style>
-        body { margin: 0; background: #02050a; overflow: hidden; font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif; }
+        body { margin: 0; background: #02050a; overflow: hidden; font-family: 'Segoe UI', sans-serif; }
         canvas { display: block; touch-action: none; }
-        .ui { position: absolute; bottom: 50px; left: 50%; transform: translateX(-50%); z-index: 100; }
-        button {
-            background: rgba(255, 255, 255, 0.05); backdrop-filter: blur(15px);
-            border: 1px solid rgba(255, 255, 255, 0.2); color: #fff;
-            padding: 18px 40px; border-radius: 50px; cursor: pointer;
-            font-size: 16px; transition: 0.4s; letter-spacing: 1px;
+        .ui { position: absolute; bottom: 40px; left: 50%; transform: translateX(-50%); z-index: 100; text-align: center; }
+        #btn {
+            background: rgba(255, 255, 255, 0.1); backdrop-filter: blur(20px);
+            border: 2px solid rgba(255, 255, 255, 0.3); color: #fff;
+            padding: 20px 40px; border-radius: 50px; cursor: pointer;
+            font-size: 18px; transition: 0.3s;
         }
-        button:hover { background: rgba(255, 255, 255, 0.15); transform: scale(1.05); }
+        /* Ефект пульсації для інклюзії (показує стан готовності) */
+        .listening { border-color: #FFD700 !important; box-shadow: 0 0 20px #FFD700; transform: scale(1.05); }
     </style>
 </head>
 <body>
 
-<div class="ui"><button id="btn">Натисни та промов</button></div>
+<div class="ui"><button id="btn">Натисни та скажи слово</button></div>
 <canvas id="c"></canvas>
 
 <script>
     const canvas = document.getElementById('c');
     const ctx = canvas.getContext('2d');
     let particles = [], width, height, targets = [];
+    let isListening = false;
 
     class Particle {
         constructor() { this.reset(); }
         reset() {
             this.x = Math.random() * width;
             this.y = Math.random() * height;
-            this.vx = (Math.random() - 0.5) * 2;
-            this.vy = (Math.random() - 0.5) * 2;
         }
         update(target) {
             if (target) {
                 this.x += (target.x - this.x) * 0.08;
                 this.y += (target.y - this.y) * 0.08;
-                this.color = target.color; // Колір згідно з паттерном прапора
+                this.color = target.color;
             } else {
-                this.x += this.vx; this.y += this.vy;
-                this.color = `rgba(255, 255, 255, 0.3)`;
-                if (this.x < 0 || this.x > width) this.vx *= -1;
-                if (this.y < 0 || this.y > height) this.vy *= -1;
+                // Космічний хаос
+                this.x += (Math.random() - 0.5) * 2;
+                this.y += (Math.random() - 0.5) * 2;
+                this.color = `rgba(255, 255, 255, 0.2)`;
             }
         }
         draw() {
             ctx.fillStyle = this.color;
             ctx.beginPath();
-            ctx.arc(this.x, this.y, 1.5, 0, Math.PI * 2);
+            ctx.arc(this.x, this.y, 2, 0, Math.PI * 2);
             ctx.fill();
         }
     }
@@ -60,7 +60,7 @@
         const octx = off.getContext('2d');
         off.width = width; off.height = height;
         
-        const fontSize = Math.min(width / (text.length * 0.4), height / 5);
+        const fontSize = Math.min(width / (text.length > 10 ? 10 : 5), 80);
         octx.font = `bold ${fontSize}px Arial`;
         octx.textAlign = 'center';
         octx.textBaseline = 'middle';
@@ -68,7 +68,7 @@
         const words = text.split(' ');
         let lines = [], current = words[0];
         for(let i=1; i<words.length; i++) {
-            if(octx.measureText(current + " " + words[i]).width < width * 0.8) current += " " + words[i];
+            if(octx.measureText(current + " " + words[i]).width < width * 0.7) current += " " + words[i];
             else { lines.push(current); current = words[i]; }
         }
         lines.push(current);
@@ -85,16 +85,14 @@
             if (data[i + 3] > 128) {
                 const x = (i/4) % width;
                 const y = Math.floor((i/4) / width);
-                // Розподіл кольорів прапора: синій зверху, жовтий знизу
-                const color = y < height/2 ? '#4A90E2' : '#FFD700';
-                coords.push({x, y, color});
+                coords.push({x, y, color: y < height/2 ? '#4A90E2' : '#FFD700'});
             }
         }
         return coords;
     }
 
     function loop() {
-        ctx.fillStyle = 'rgba(2, 5, 10, 0.2)';
+        ctx.fillStyle = 'rgba(2, 5, 10, 0.15)';
         ctx.fillRect(0, 0, width, height);
         particles.forEach((p, i) => {
             p.update(targets[i % targets.length]);
@@ -103,16 +101,29 @@
         requestAnimationFrame(loop);
     }
 
+    const btn = document.getElementById('btn');
+    const rec = new (window.SpeechRecognition || window.webkitSpeechRecognition)();
+    rec.lang = 'uk-UA';
+    
+    btn.onclick = () => {
+        rec.start();
+        isListening = true;
+        btn.classList.add('listening');
+        btn.innerText = "Слухаю...";
+    };
+
+    rec.onresult = (e) => {
+        targets = getTargets(e.results[0][0].transcript.toUpperCase());
+        isListening = false;
+        btn.classList.remove('listening');
+        btn.innerText = "Скажи ще щось";
+    };
+
     function init() {
         width = canvas.width = window.innerWidth;
         height = canvas.height = window.innerHeight;
         particles = Array.from({length: 3000}, () => new Particle());
     }
-
-    const rec = new (window.SpeechRecognition || window.webkitSpeechRecognition)();
-    rec.lang = 'uk-UA';
-    document.getElementById('btn').onclick = () => { rec.start(); targets = []; };
-    rec.onresult = (e) => { targets = getTargets(e.results[0][0].transcript.toUpperCase()); };
 
     window.onresize = init;
     init(); loop();

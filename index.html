@@ -2,46 +2,72 @@
 <html lang="uk">
 <head>
     <meta charset="UTF-8">
-    <title>Голосова магія літер</title>
+    <title>Фізичне збирання літер</title>
     <style>
-        body { margin: 0; background: #0a0a0a; color: white; overflow: hidden; display: flex; flex-direction: column; align-items: center; justify-content: center; height: 100vh; }
-        button { padding: 15px 30px; font-size: 20px; cursor: pointer; background: #ff4757; border: none; border-radius: 50px; color: white; }
+        body { margin: 0; background: #000; overflow: hidden; display: flex; flex-direction: column; align-items: center; }
+        canvas { display: block; }
+        .ui { position: absolute; top: 20px; z-index: 10; text-align: center; }
+        button { padding: 15px 30px; font-size: 20px; cursor: pointer; border-radius: 30px; border: none; background: #fff; }
     </style>
 </head>
 <body>
-
-    <button id="startBtn">Натисніть і промовте слово</button>
-    <canvas id="scene"></canvas>
+    <div class="ui">
+        <button id="btn">Натисни і скажи слово</button>
+    </div>
+    <canvas id="canvas"></canvas>
 
 <script>
-    // Налаштування Web Speech API
-    const SpeechRecognition = window.SpeechRecognition || window.webkitSpeechRecognition;
-    const recognition = new SpeechRecognition();
-    recognition.lang = 'uk-UA';
+    const canvas = document.getElementById('canvas');
+    const ctx = canvas.getContext('2d');
+    canvas.width = window.innerWidth;
+    canvas.height = window.innerHeight;
 
-    const startBtn = document.getElementById('startBtn');
+    let particles = [];
     
-    startBtn.addEventListener('click', () => {
-        recognition.start();
-        startBtn.innerText = "Слухаю...";
-    });
+    // Створюємо 1000 початкових частинок у хаосі
+    for(let i=0; i<1000; i++) {
+        particles.push({
+            x: Math.random() * canvas.width,
+            y: Math.random() * canvas.height,
+            targetX: Math.random() * canvas.width,
+            targetY: Math.random() * canvas.height,
+            size: Math.random() * 2 + 1
+        });
+    }
 
-    recognition.onresult = (event) => {
-        const transcript = event.results[0][0].transcript;
-        startBtn.innerText = "Ви сказали: " + transcript;
-        console.log("Отримано слово:", transcript);
+    function animate() {
+        ctx.fillStyle = 'rgba(0,0,0,0.1)';
+        ctx.fillRect(0, 0, canvas.width, canvas.height);
         
-        // Тут викликається логіка розкидання/збору частинок для отриманого тексту
-        triggerFormation(transcript.toUpperCase());
+        particles.forEach(p => {
+            // Рух до цілі з ефектом "фізичного" прискорення
+            p.x += (p.targetX - p.x) * 0.03;
+            p.y += (p.targetY - p.y) * 0.03;
+            
+            ctx.fillStyle = '#00ffcc';
+            ctx.beginPath();
+            ctx.arc(p.x, p.y, p.size, 0, Math.PI*2);
+            ctx.fill();
+        });
+        requestAnimationFrame(animate);
+    }
+
+    // Слухаємо голос
+    const rec = new (window.SpeechRecognition || window.webkitSpeechRecognition)();
+    rec.lang = 'uk-UA';
+    
+    document.getElementById('btn').onclick = () => rec.start();
+
+    rec.onresult = (e) => {
+        const word = e.results[0][0].transcript.toUpperCase();
+        // Спрощене розміщення літер по горизонталі
+        particles.forEach((p, index) => {
+            p.targetX = (index % word.length) * 150 + 100;
+            p.targetY = canvas.height / 2;
+        });
     };
 
-    // --- Логіка Canvas (спрощено) ---
-    // В реальному проекті тут функція, що перетворює 
-    // текст на координати точок (матрицю точок)
-    function triggerFormation(text) {
-        console.log("Створюємо магію для:", text);
-        // Тут частинки переміщуються до точок, що формують слово
-    }
+    animate();
 </script>
 </body>
 </html>

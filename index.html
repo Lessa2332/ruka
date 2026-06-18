@@ -3,109 +3,116 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
-    <title>Cosmic Particles</title>
+    <title>Українська Магія</title>
     <style>
-        body { margin: 0; background: #02050a; overflow: hidden; font-family: 'Segoe UI', sans-serif; }
-        canvas { display: block; }
-        .glass-ui {
-            position: absolute; bottom: 50px; left: 50%; transform: translateX(-50%);
-            background: rgba(255, 255, 255, 0.08); backdrop-filter: blur(20px);
-            border: 1px solid rgba(255, 255, 255, 0.2);
-            padding: 18px 35px; border-radius: 50px; color: #fff;
-            font-size: 16px; cursor: pointer; z-index: 100;
-            transition: all 0.4s cubic-bezier(0.175, 0.885, 0.32, 1.275);
-            text-transform: uppercase; letter-spacing: 2px;
+        body { margin: 0; background: #02050a; overflow: hidden; font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif; }
+        canvas { display: block; touch-action: none; }
+        .ui { position: absolute; bottom: 50px; left: 50%; transform: translateX(-50%); z-index: 100; }
+        button {
+            background: rgba(255, 255, 255, 0.05); backdrop-filter: blur(15px);
+            border: 1px solid rgba(255, 255, 255, 0.2); color: #fff;
+            padding: 18px 40px; border-radius: 50px; cursor: pointer;
+            font-size: 16px; transition: 0.4s; letter-spacing: 1px;
         }
-        .glass-ui:hover { background: rgba(255, 255, 255, 0.15); transform: translateX(-50%) scale(1.05); }
+        button:hover { background: rgba(255, 255, 255, 0.15); transform: scale(1.05); }
     </style>
 </head>
 <body>
 
-<div class="glass-ui" id="btn">Розпочати</div>
+<div class="ui"><button id="btn">Натисни та промов</button></div>
 <canvas id="c"></canvas>
 
 <script>
     const canvas = document.getElementById('c');
     const ctx = canvas.getContext('2d');
-    let particles = [], width, height;
+    let particles = [], width, height, targets = [];
 
     class Particle {
-        constructor() {
-            this.reset();
-        }
+        constructor() { this.reset(); }
         reset() {
             this.x = Math.random() * width;
             this.y = Math.random() * height;
             this.vx = (Math.random() - 0.5) * 2;
             this.vy = (Math.random() - 0.5) * 2;
-            this.size = Math.random() * 1.5 + 0.5;
-            this.alpha = Math.random() * 0.5 + 0.5;
-            this.color = `hsla(${200 + Math.random() * 60}, 100%, 70%, `;
         }
-        update(targetX, targetY) {
-            // "Космічний" хаос + притягання
-            this.vx += (targetX - this.x) * 0.005 + (Math.random() - 0.5) * 0.5;
-            this.vy += (targetY - this.y) * 0.005 + (Math.random() - 0.5) * 0.5;
-            this.vx *= 0.95; this.vy *= 0.95;
-            this.x += this.vx; this.y += this.vy;
+        update(target) {
+            if (target) {
+                this.x += (target.x - this.x) * 0.08;
+                this.y += (target.y - this.y) * 0.08;
+                this.color = target.color; // Колір згідно з паттерном прапора
+            } else {
+                this.x += this.vx; this.y += this.vy;
+                this.color = `rgba(255, 255, 255, 0.3)`;
+                if (this.x < 0 || this.x > width) this.vx *= -1;
+                if (this.y < 0 || this.y > height) this.vy *= -1;
+            }
         }
         draw() {
-            ctx.fillStyle = this.color + this.alpha + ')';
+            ctx.fillStyle = this.color;
             ctx.beginPath();
-            ctx.arc(this.x, this.y, this.size, 0, Math.PI * 2);
+            ctx.arc(this.x, this.y, 1.5, 0, Math.PI * 2);
             ctx.fill();
         }
     }
 
-    function init() {
-        width = canvas.width = window.innerWidth;
-        height = canvas.height = window.innerHeight;
-        particles = Array.from({length: 2500}, () => new Particle());
-    }
-
     function getTargets(text) {
-        const offscreen = document.createElement('canvas');
-        const octx = offscreen.getContext('2d');
-        offscreen.width = width; offscreen.height = height;
+        const off = document.createElement('canvas');
+        const octx = off.getContext('2d');
+        off.width = width; off.height = height;
         
-        // Адаптивний розмір шрифту залежно від довжини слова
-        const fontSize = Math.min(width / (text.length * 0.5), height / 2);
+        const fontSize = Math.min(width / (text.length * 0.4), height / 5);
         octx.font = `bold ${fontSize}px Arial`;
-        octx.fillStyle = 'white';
         octx.textAlign = 'center';
         octx.textBaseline = 'middle';
-        octx.fillText(text, width / 2, height / 2);
+        
+        const words = text.split(' ');
+        let lines = [], current = words[0];
+        for(let i=1; i<words.length; i++) {
+            if(octx.measureText(current + " " + words[i]).width < width * 0.8) current += " " + words[i];
+            else { lines.push(current); current = words[i]; }
+        }
+        lines.push(current);
+
+        let coords = [];
+        lines.forEach((line, idx) => {
+            const y = height/2 - (lines.length-1)*fontSize/2 + idx*fontSize;
+            octx.fillStyle = 'white';
+            octx.fillText(line, width/2, y);
+        });
 
         const data = octx.getImageData(0, 0, width, height).data;
-        let coords = [];
-        for (let i = 0; i < data.length; i += 32) { // Крок для щільності
+        for (let i = 0; i < data.length; i += 32) {
             if (data[i + 3] > 128) {
-                coords.push({x: (i/4) % width, y: Math.floor((i/4) / width)});
+                const x = (i/4) % width;
+                const y = Math.floor((i/4) / width);
+                // Розподіл кольорів прапора: синій зверху, жовтий знизу
+                const color = y < height/2 ? '#4A90E2' : '#FFD700';
+                coords.push({x, y, color});
             }
         }
         return coords;
     }
 
-    let targets = [];
     function loop() {
-        ctx.fillStyle = 'rgba(2, 5, 10, 0.2)'; // Ефект шлейфу
+        ctx.fillStyle = 'rgba(2, 5, 10, 0.2)';
         ctx.fillRect(0, 0, width, height);
-        
         particles.forEach((p, i) => {
-            const target = targets[i % targets.length] || {x: Math.random()*width, y: Math.random()*height};
-            p.update(target.x, target.y);
+            p.update(targets[i % targets.length]);
             p.draw();
         });
         requestAnimationFrame(loop);
     }
 
+    function init() {
+        width = canvas.width = window.innerWidth;
+        height = canvas.height = window.innerHeight;
+        particles = Array.from({length: 3000}, () => new Particle());
+    }
+
     const rec = new (window.SpeechRecognition || window.webkitSpeechRecognition)();
     rec.lang = 'uk-UA';
-    document.getElementById('btn').onclick = () => { rec.start(); document.getElementById('btn').innerText = "Слухаю..."; };
-    rec.onresult = (e) => {
-        targets = getTargets(e.results[0][0].transcript.toUpperCase());
-        document.getElementById('btn').innerText = "Розпочати";
-    };
+    document.getElementById('btn').onclick = () => { rec.start(); targets = []; };
+    rec.onresult = (e) => { targets = getTargets(e.results[0][0].transcript.toUpperCase()); };
 
     window.onresize = init;
     init(); loop();

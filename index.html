@@ -2,72 +2,104 @@
 <html lang="uk">
 <head>
     <meta charset="UTF-8">
-    <title>Фізичне збирання літер</title>
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+    <title>Voice Particles</title>
     <style>
-        body { margin: 0; background: #000; overflow: hidden; display: flex; flex-direction: column; align-items: center; }
-        canvas { display: block; }
-        .ui { position: absolute; top: 20px; z-index: 10; text-align: center; }
-        button { padding: 15px 30px; font-size: 20px; cursor: pointer; border-radius: 30px; border: none; background: #fff; }
+        body { margin: 0; background: #050505; overflow: hidden; font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto; }
+        
+        /* Glassmorphism UI */
+        .glass-ui {
+            position: absolute; bottom: 40px; left: 50%; transform: translateX(-50%);
+            background: rgba(255, 255, 255, 0.05); backdrop-filter: blur(15px);
+            border: 1px solid rgba(255, 255, 255, 0.1);
+            padding: 20px 40px; border-radius: 50px; color: white;
+            cursor: pointer; transition: 0.3s; z-index: 100;
+            box-shadow: 0 10px 30px rgba(0,0,0,0.5);
+        }
+        .glass-ui:active { transform: translateX(-50%) scale(0.95); }
+        
+        canvas { display: block; touch-action: none; }
     </style>
 </head>
 <body>
-    <div class="ui">
-        <button id="btn">Натисни і скажи слово</button>
-    </div>
-    <canvas id="canvas"></canvas>
+
+<div class="glass-ui" id="btn">Натисніть і промовте слово</div>
+<canvas id="c"></canvas>
 
 <script>
-    const canvas = document.getElementById('canvas');
-    const ctx = canvas.getContext('2d');
-    canvas.width = window.innerWidth;
-    canvas.height = window.innerHeight;
+    const canvas = document.getElementById('c');
+    const ctx = canvas.getContext('2d', { willReadFrequently: true });
+    let particles = [], width, height;
 
-    let particles = [];
-    
-    // Створюємо 1000 початкових частинок у хаосі
-    for(let i=0; i<1000; i++) {
-        particles.push({
-            x: Math.random() * canvas.width,
-            y: Math.random() * canvas.height,
-            targetX: Math.random() * canvas.width,
-            targetY: Math.random() * canvas.height,
-            size: Math.random() * 2 + 1
-        });
-    }
-
-    function animate() {
-        ctx.fillStyle = 'rgba(0,0,0,0.1)';
-        ctx.fillRect(0, 0, canvas.width, canvas.height);
-        
-        particles.forEach(p => {
-            // Рух до цілі з ефектом "фізичного" прискорення
-            p.x += (p.targetX - p.x) * 0.03;
-            p.y += (p.targetY - p.y) * 0.03;
-            
-            ctx.fillStyle = '#00ffcc';
+    class Particle {
+        constructor() {
+            this.x = Math.random() * width;
+            this.y = Math.random() * height;
+            this.targetX = this.x;
+            this.targetY = this.y;
+            this.vx = 0; this.vy = 0;
+            this.size = Math.random() * 2 + 1;
+            this.color = `hsla(${180 + Math.random() * 40}, 100%, 70%, 0.8)`;
+        }
+        draw() {
+            ctx.fillStyle = this.color;
             ctx.beginPath();
-            ctx.arc(p.x, p.y, p.size, 0, Math.PI*2);
+            ctx.arc(this.x, this.y, this.size, 0, Math.PI * 2);
             ctx.fill();
-        });
-        requestAnimationFrame(animate);
+        }
+        update() {
+            // Spring Physics
+            this.vx += (this.targetX - this.x) * 0.02;
+            this.vy += (this.targetY - this.y) * 0.02;
+            this.vx *= 0.9; this.vy *= 0.9; // Friction
+            this.x += this.vx; this.y += this.vy;
+        }
     }
 
-    // Слухаємо голос
+    function init() {
+        width = canvas.width = window.innerWidth;
+        height = canvas.height = window.innerHeight;
+        particles = Array.from({length: 2000}, () => new Particle());
+    }
+
+    function updateTargets(text) {
+        const offscreen = document.createElement('canvas');
+        const octx = offscreen.getContext('2d');
+        offscreen.width = width; offscreen.height = height;
+        octx.font = 'bold 15vw Arial';
+        octx.fillStyle = 'white';
+        octx.textAlign = 'center';
+        octx.fillText(text, width / 2, height / 2);
+
+        const data = octx.getImageData(0, 0, width, height).data;
+        let coords = [];
+        for (let i = 0; i < data.length; i += 16) {
+            if (data[i + 3] > 128) {
+                let x = (i / 4) % width;
+                let y = Math.floor((i / 4) / width);
+                coords.push({x, y});
+            }
+        }
+        particles.forEach((p, i) => {
+            let target = coords[i % coords.length] || {x: width/2, y: height/2};
+            p.targetX = target.x; p.targetY = target.y;
+        });
+    }
+
+    function loop() {
+        ctx.fillStyle = 'rgba(0,0,0,0.1)';
+        ctx.fillRect(0,0,width,height);
+        particles.forEach(p => { p.update(); p.draw(); });
+        requestAnimationFrame(loop);
+    }
+
     const rec = new (window.SpeechRecognition || window.webkitSpeechRecognition)();
     rec.lang = 'uk-UA';
-    
     document.getElementById('btn').onclick = () => rec.start();
+    rec.onresult = (e) => updateTargets(e.results[0][0].transcript.toUpperCase());
 
-    rec.onresult = (e) => {
-        const word = e.results[0][0].transcript.toUpperCase();
-        // Спрощене розміщення літер по горизонталі
-        particles.forEach((p, index) => {
-            p.targetX = (index % word.length) * 150 + 100;
-            p.targetY = canvas.height / 2;
-        });
-    };
-
-    animate();
+    window.onresize = init;
+    init(); loop();
 </script>
 </body>
 </html>
